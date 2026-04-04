@@ -2,8 +2,10 @@ import express from "express";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
 import path from "path";
+import type { NextFunction, Request, Response } from "express";
 import words from "./models/words";
 import wordOfTheDay from "./models/wordOfTheDay";
+import connectDB from "./database";
 import { getImage, uploadImageToS3 } from "./services/generateImageWithComfyUI";
 import { waitForImageFilename } from "./services/imagePolling";
 import authRoutes from "./routes/auth";
@@ -115,6 +117,24 @@ app.get("/", (req, res) => {
 app.get("/hello", (req, res) => {
   res.send("Hello response!");
 });
+
+const ensureDatabaseConnection = async (
+  _req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    logger.error("Database connection unavailable", error);
+    res.status(500).json({ error: "Database connection unavailable" });
+  }
+};
+
+if (process.env.VERCEL) {
+  app.use(ensureDatabaseConnection);
+}
 
 /**
  * @swagger
