@@ -57,6 +57,11 @@ vercel
 vercel --prod
 ```
 
+## API Documentation
+
+- OpenAPI spec: `/openapi.json`
+- Swagger UI: `/docs`
+
 ### GitHub Actions CI/CD
 
 Workflows are included in:

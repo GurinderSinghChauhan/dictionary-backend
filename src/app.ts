@@ -14,6 +14,7 @@ import uploadExcelRouter from "./routes/uploadExcel";
 import subjectRouter from "./routes/subject";
 import gradeRouter from "./routes/grade";
 import examRouter from "./routes/exam";
+import openApiSpec from "./docs/openapi.json";
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -77,6 +78,32 @@ app.use(cors(corsOptions)); // ✅ Enable CORS
 app.use(express.json());
 app.set("trust proxy", 1);
 app.use(limiter);
+
+app.get("/openapi.json", (req, res) => {
+  res.json(openApiSpec);
+});
+
+app.get("/docs", (req, res) => {
+  res.type("html").send(`<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dictionary Backend API Docs</title>
+    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css" />
+  </head>
+  <body>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script>
+      window.ui = SwaggerUIBundle({
+        url: "/openapi.json",
+        dom_id: "#swagger-ui"
+      });
+    </script>
+  </body>
+</html>`);
+});
 
 app.get("/", (req, res) => {
   res.send("Welcome to Dictionary!");
