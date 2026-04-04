@@ -7,7 +7,7 @@ import {
   parseUniqueWordsFromDiskFile,
   parseUniqueWordsFromText,
   parseUniqueWordsFromUpload,
-} from "../src/utils/wordList";
+} from "../../src/utils/wordList";
 
 describe("wordList utils", () => {
   it("parseUniqueWordsFromText handles CSV splitting and de-duplication", () => {

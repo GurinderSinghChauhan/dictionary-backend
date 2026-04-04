@@ -62,6 +62,38 @@ const buildUniqueUsername = async (baseName: string) => {
   return candidate;
 };
 
+/**
+ * @swagger
+ * /auth/register:
+ *   post:
+ *     tags:
+ *       - Auth
+ *     summary: Register a new user
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - username
+ *               - email
+ *               - password
+ *             properties:
+ *               username:
+ *                 type: string
+ *               email:
+ *                 type: string
+ *               password:
+ *                 type: string
+ *     responses:
+ *       201:
+ *         description: User registered successfully
+ *       400:
+ *         description: Missing required fields
+ *       409:
+ *         description: User already exists
+ */
 // Register Route
 router.post("/register", async (req, res) => {
   try {
@@ -116,6 +148,36 @@ router.post("/register", async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /auth/login:
+ *   post:
+ *     tags:
+ *       - Auth
+ *     summary: Login user with email or username
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - identifier
+ *               - password
+ *             properties:
+ *               identifier:
+ *                 type: string
+ *                 description: Email or username
+ *               password:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Logged in successfully
+ *       401:
+ *         description: Invalid credentials
+ *       404:
+ *         description: User not found
+ */
 // Login Route
 router.post("/login", async (req: Request, res: Response) => {
   try {
@@ -170,6 +232,32 @@ router.post("/login", async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * @swagger
+ * /auth/google:
+ *   post:
+ *     tags:
+ *       - Auth
+ *     summary: Login via Google ID token
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - idToken
+ *             properties:
+ *               idToken:
+ *                 type: string
+ *     responses:
+ *       200:
+ *         description: Logged in successfully
+ *       400:
+ *         description: Invalid Google token
+ *       401:
+ *         description: Google authentication failed
+ */
 router.post("/google", async (req: Request, res: Response) => {
   try {
     const idToken = String(req.body?.idToken || "").trim();
@@ -229,6 +317,23 @@ router.post("/google", async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * @swagger
+ * /auth/me:
+ *   get:
+ *     tags:
+ *       - Auth
+ *     summary: Get current authenticated user
+ *     security:
+ *       - BearerAuth: []
+ *     responses:
+ *       200:
+ *         description: Current user details
+ *       404:
+ *         description: User not found
+ *       500:
+ *         description: Server error
+ */
 router.get(
   "/me",
   authenticateToken,

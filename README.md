@@ -62,6 +62,19 @@ vercel --prod
 - OpenAPI spec: `/openapi.json`
 - Swagger UI: `/docs`
 
+## Deployment Safety (Recommended)
+
+Since Vercel auto-deploys on push to `main`, protect `main` with required checks:
+
+1. GitHub -> Settings -> Branches -> Add branch protection rule for `main`
+2. Enable:
+   - Require a pull request before merging
+   - Require status checks to pass before merging
+3. Select required check:
+   - `build` (from `.github/workflows/ci.yml`)
+
+This ensures failed CI never reaches `main`, so Vercel only deploys validated commits.
+
 ### GitHub Actions CI/CD
 
 Workflows are included in:

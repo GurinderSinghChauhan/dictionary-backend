@@ -9,7 +9,53 @@ import { parseUniqueWordsFromDiskFile } from "../utils/wordList";
 
 const router = express.Router();
 
-// GET /allWords?page=1&limit=10&search=word
+/**
+ * @swagger
+ * /words:
+ *   get:
+ *     tags:
+ *       - Words - All Words
+ *     summary: Get all words with pagination
+ *     description: Retrieve paginated list of all words with optional search filtering
+ *     parameters:
+ *       - name: page
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number for pagination
+ *       - name: limit
+ *         in: query
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of words per page
+ *       - name: search
+ *         in: query
+ *         schema:
+ *           type: string
+ *         description: Search term to filter words
+ *     responses:
+ *       200:
+ *         description: Words list with pagination
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 words:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                 page:
+ *                   type: integer
+ *                 limit:
+ *                   type: integer
+ *                 total:
+ *                   type: integer
+ *       500:
+ *         description: Server error
+ */
 router.get("/", async (req, res) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
@@ -24,7 +70,33 @@ router.get("/", async (req, res) => {
   }
 });
 
-// DELETE /allWords?word=example
+/**
+ * @swagger
+ * /words:
+ *   delete:
+ *     tags:
+ *       - Words - All Words
+ *     summary: Delete a word (Admin only)
+ *     description: Delete a specific word from the database
+ *     security:
+ *       - BearerAuth: []
+ *     parameters:
+ *       - name: word
+ *         in: query
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: The word to delete
+ *     responses:
+ *       200:
+ *         description: Word deleted successfully
+ *       400:
+ *         description: Missing word parameter
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
 router.delete("/", requireAdmin, async (req, res) => {
   try {
     const word = req.query.word as string;
@@ -41,16 +113,6 @@ router.delete("/", requireAdmin, async (req, res) => {
   }
 });
 
-// router.post("/define-many", async (req, res) => {
-//   try {
-//     await defineManyWords(req, res);
-//     await getImagesByWords(req, res);
-
-//   } catch (err) {
-//     console.error("❌ Error in /define-many:", err);
-//     res.status(500).json({ error: "Internal server error" });
-//   }
-// });
 const upload = multer({ dest: "/tmp/uploads/" });
 
 const cleanupUploadedFile = (file?: Express.Multer.File) => {
@@ -62,6 +124,42 @@ const cleanupUploadedFile = (file?: Express.Multer.File) => {
   }
 };
 
+/**
+ * @swagger
+ * /words/upload:
+ *   post:
+ *     tags:
+ *       - Words - All Words
+ *     summary: Upload words from file (Admin only)
+ *     description: Upload and process words from Excel or text file
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: File containing words (.xlsx, .csv, .txt)
+ *               promptStyle:
+ *                 type: string
+ *                 enum: [meaning, exampleSentence, positivePrompt]
+ *                 default: positivePrompt
+ *                 description: Image generation prompt style
+ *     responses:
+ *       200:
+ *         description: Words uploaded and processed successfully
+ *       400:
+ *         description: Missing file or no valid words found
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
 router.post(
   "/upload",
   requireAdmin,
@@ -108,6 +206,40 @@ router.post(
   }
 );
 
+/**
+ * @swagger
+ * /words/getImagesByWords:
+ *   post:
+ *     tags:
+ *       - Words - All Words
+ *     summary: Get images for words (Admin only)
+ *     description: Retrieve or generate images for a list of words
+ *     security:
+ *       - BearerAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - words
+ *             properties:
+ *               words:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: List of words to get images for
+ *     responses:
+ *       200:
+ *         description: Images retrieved successfully
+ *       400:
+ *         description: Missing or empty words array
+ *       401:
+ *         description: Unauthorized
+ *       500:
+ *         description: Server error
+ */
 router.post("/getImagesByWords", requireAdmin, async (req, res) => {
   try {
     const words = Array.isArray(req.body?.words) ? req.body.words : [];
