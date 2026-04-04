@@ -1,23 +1,13 @@
-import OpenAI from "openai";
 import { WordDetails } from "./wordServices";
 import {
   getImage,
-  getPromptHistory,
   sendPromptAPI,
   uploadImageToS3,
 } from "./generateImageWithComfyUI";
 import GradeWords from "../models/gradeWords";
-
-const getOpenAIClient = () => {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is required for generation features");
-  }
-  return new OpenAI({ apiKey });
-};
-
-const escapeRegex = (value: string) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+import { getOpenAIClient } from "./openaiClient";
+import { waitForImageFilename } from "./imagePolling";
+import { escapeRegex, normalizeWordList } from "../utils/text";
 
 export const generateImageForGrade = async (
   grade: string,
@@ -28,9 +18,7 @@ export const generateImageForGrade = async (
     console.log("🔍 Starting image generation for grade:", grade, promptStyle);
     console.log("📜 Received word list:", wordList);
 
-    const cleanedWords = wordList
-      .map((w) => w.trim().toLowerCase())
-      .filter(Boolean);
+    const cleanedWords = normalizeWordList(wordList);
 
     console.log("🧹 Cleaned word list:", cleanedWords);
 
@@ -268,24 +256,6 @@ export const assignImageToGradeWord = async (
     console.error("❌ Error in assignImageToGradeWord:", error);
     throw new Error("Failed to assign images to grade words");
   }
-};
-
-const waitForImageFilename = async (
-  promptId: string,
-  retries = 150,
-  delay = 4000
-): Promise<string | null> => {
-  for (let i = 0; i < retries; i++) {
-    const history = await getPromptHistory(promptId);
-    const outputNode = history?.[promptId]?.outputs?.["9"];
-
-    if (outputNode?.images?.length > 0 && outputNode.images[0].filename) {
-      return outputNode.images[0].filename;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, delay));
-  }
-  return null;
 };
 
 export const getGradeWords = async (

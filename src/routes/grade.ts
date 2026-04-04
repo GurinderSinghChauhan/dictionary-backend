@@ -9,9 +9,8 @@ import {
 import GradeWords from "../models/gradeWords";
 import { requireAdmin } from "../middleware/auth";
 import { parseUniqueWordsFromDiskFile } from "../utils/wordList";
+import { escapeRegex, getPositiveInteger } from "../utils/text";
 const upload = multer({ dest: "/tmp/uploads/" });
-const escapeRegex = (value: string) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const cleanupUploadedFile = (file?: Express.Multer.File) => {
   if (!file?.path) return;
@@ -108,12 +107,9 @@ router.post(
 
 router.get("/", async (req, res) => {
   try {
-    const fullUrl = new URL(
-      req.protocol + "://" + req.get("host") + req.originalUrl
-    );
-    const grade = fullUrl.searchParams.get("grade") || "";
-    const page = parseInt(fullUrl.searchParams.get("page") || "1");
-    const limit = parseInt(fullUrl.searchParams.get("limit") || "10");
+    const grade = String(req.query.grade || "");
+    const page = getPositiveInteger(req.query.page, 1);
+    const limit = getPositiveInteger(req.query.limit, 10);
 
     if (!grade) {
       res.status(400).json({ success: false, error: "Grade is required." });

@@ -1,7 +1,5 @@
 import words from "../../models/words";
-
-const escapeRegex = (value: string) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+import { escapeRegex, getPositiveInteger } from "../../utils/text";
 
 // Fetch all words with pagination and optional search
 export async function getAllWords({
@@ -13,7 +11,9 @@ export async function getAllWords({
   limit?: number;
   search?: string;
 }) {
-  const skip = (page - 1) * limit;
+  const safePage = getPositiveInteger(page, 1);
+  const safeLimit = getPositiveInteger(limit, 10);
+  const skip = (safePage - 1) * safeLimit;
   const query = search
     ? { word: { $regex: new RegExp(escapeRegex(search), "i") } }
     : {};
@@ -28,9 +28,10 @@ export async function getAllWords({
         _id: 0,
         promptId: 1,
         meaning: 1,
-      }) // select specific fields
+      })
+      .lean()
       .skip(skip)
-      .limit(limit)
+      .limit(safeLimit)
       .sort({ word: 1 }),
     words.countDocuments(query),
   ]);
@@ -38,8 +39,8 @@ export async function getAllWords({
   return {
     wordsArray: wordDocs,
     total,
-    page,
-    totalPages: Math.ceil(total / limit),
+    page: safePage,
+    totalPages: Math.ceil(total / safeLimit),
   };
 }
 

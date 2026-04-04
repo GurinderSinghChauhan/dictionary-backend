@@ -42,6 +42,9 @@ const serializeUser = (user: {
   isAdmin: user.isAdmin,
 });
 
+const findPublicUserById = (id: unknown) =>
+  User.findById(id).select("_id username email isAdmin");
+
 const buildUniqueUsername = async (baseName: string) => {
   const normalizedBase = baseName
     .trim()
@@ -110,13 +113,16 @@ router.post("/register", async (req, res) => {
       return;
     }
 
-    const existingEmail = await User.findOne({ email });
+    const [existingEmail, existingUsername] = await Promise.all([
+      User.findOne({ email }).lean(),
+      User.findOne({ username }).lean(),
+    ]);
+
     if (existingEmail) {
       res.status(409).json({ message: "User already exists with this email" });
       return;
     }
 
-    const existingUsername = await User.findOne({ username });
     if (existingUsername) {
       res.status(409).json({ message: "Username is already taken" });
       return;
@@ -339,9 +345,7 @@ router.get(
   authenticateToken,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const user = await User.findById(req.user?.id).select(
-        "_id username email isAdmin"
-      );
+      const user = await findPublicUserById(req.user?.id);
       if (!user) {
         res.status(404).json({ message: "User not found" });
         return;
@@ -359,9 +363,7 @@ router.get(
   authenticateToken,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const user = await User.findById(req.user?.id).select(
-        "_id username email isAdmin"
-      );
+      const user = await findPublicUserById(req.user?.id);
       if (!user) {
         res.status(404).json({ message: "User not found" });
         return;
@@ -379,9 +381,7 @@ router.post(
   authenticateToken,
   async (req: AuthenticatedRequest, res: Response) => {
     try {
-      const user = await User.findById(req.user?.id).select(
-        "_id username email isAdmin"
-      );
+      const user = await findPublicUserById(req.user?.id);
       if (!user) {
         res.status(404).json({ message: "User not found" });
         return;

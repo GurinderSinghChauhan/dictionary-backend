@@ -1,23 +1,13 @@
-import OpenAI from "openai";
 import ExamWords from "../models/examWords";
 import {
   getImage,
-  getPromptHistory,
   sendPromptAPI,
   uploadImageToS3,
 } from "./generateImageWithComfyUI";
 import { WordDetails } from "./wordServices";
-
-const getOpenAIClient = () => {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is required for generation features");
-  }
-  return new OpenAI({ apiKey });
-};
-
-const escapeRegex = (value: string) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+import { getOpenAIClient } from "./openaiClient";
+import { waitForImageFilename } from "./imagePolling";
+import { escapeRegex, normalizeWordList } from "../utils/text";
 
 export const generateImageForExam = async (
   exam: string,
@@ -27,9 +17,7 @@ export const generateImageForExam = async (
   try {
     console.log("🔍 Starting image generation for exam:", exam);
 
-    const cleanedWords = wordList
-      .map((w) => w.trim().toLowerCase())
-      .filter(Boolean);
+    const cleanedWords = normalizeWordList(wordList);
 
     let examEntry = await ExamWords.findOne({
       exam: new RegExp(`^${escapeRegex(exam)}$`, "i"),
@@ -201,22 +189,6 @@ async function getWordDetailsInContext(word: string, context: string) {
     console.error("❌ Failed to parse OpenAI response:", err);
     return null;
   }
-}
-
-async function waitForImageFilename(
-  promptId: string,
-  retries = 150,
-  delay = 4000
-): Promise<string | null> {
-  for (let i = 0; i < retries; i++) {
-    const history = await getPromptHistory(promptId);
-    const outputNode = history?.[promptId]?.outputs?.["9"];
-    if (outputNode?.images?.length > 0 && outputNode.images[0].filename) {
-      return outputNode.images[0].filename;
-    }
-    await new Promise((resolve) => setTimeout(resolve, delay));
-  }
-  return null;
 }
 
 export const getExamWords = async (

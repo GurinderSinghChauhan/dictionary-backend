@@ -1,27 +1,25 @@
 // controllers/subject.ts
 import SubjectWords from "../models/subjectWords";
-import { OpenAI } from "openai";
-import dotenv from "dotenv";
 import { WordDetails } from "./wordServices";
 import {
   getImage,
-  getPromptHistory,
   sendPromptAPI,
   uploadImageToS3,
 } from "./generateImageWithComfyUI";
+import { getOpenAIClient } from "./openaiClient";
+import { waitForImageFilename } from "./imagePolling";
+import { escapeRegex, normalizeWordList } from "../utils/text";
 
-dotenv.config();
-
-const getOpenAIClient = () => {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is required for generation features");
+const getSubjectContext = (subject: string) => {
+  const normalized = subject.toLowerCase();
+  if (normalized === "english") {
+    return "English literature";
   }
-  return new OpenAI({ apiKey });
+  if (normalized === "political") {
+    return "Political science";
+  }
+  return subject;
 };
-
-const escapeRegex = (value: string) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 // Add or update words for a subject
 export const addSubjectWords = async (subject: string, words: unknown[]) => {
@@ -76,9 +74,7 @@ export const uploadSubjectWords = async (
   wordList: string[]
 ) => {
   try {
-    const cleanedWords = wordList
-      .map((w) => w.trim().toLowerCase())
-      .filter(Boolean);
+    const cleanedWords = normalizeWordList(wordList);
 
     // Get existing words for the subject
     const existingEntry = await SubjectWords.findOne({
@@ -97,14 +93,10 @@ export const uploadSubjectWords = async (
         skippedWords.push(word);
       } else {
         // Handle special subject names for better context
-        let context = subject;
-        if (subject.toLowerCase() === "english") {
-          context = "English literature";
-        } else if (subject.toLowerCase() === "political") {
-          context = "Political science";
-        }
-
-        const wordDetails = await getWordDetailsInContext(word, context);
+        const wordDetails = await getWordDetailsInContext(
+          word,
+          getSubjectContext(subject)
+        );
         addedWords.push(wordDetails);
       }
     }
@@ -135,9 +127,7 @@ export const generateImageForSubject = async (
     console.log("🔍 Starting image generation for subject:", subject, promptStyle);
     console.log("📜 Received word list:", wordList);
 
-    const cleanedWords = wordList
-      .map((w) => w.trim().toLowerCase())
-      .filter(Boolean);
+    const cleanedWords = normalizeWordList(wordList);
 
     console.log("🧹 Cleaned word list:", cleanedWords);
 
@@ -163,12 +153,10 @@ export const generateImageForSubject = async (
       if (!existingWord) {
         console.log(`🆕 Generating details for "${term}"...`);
 
-        let context = subject;
-        if (subject.toLowerCase() === "english") context = "English literature";
-        else if (subject.toLowerCase() === "political")
-          context = "Political science";
-
-        const wordDetails = await getWordDetailsInContext(term, context);
+        const wordDetails = await getWordDetailsInContext(
+          term,
+          getSubjectContext(subject)
+        );
         if (!wordDetails) {
           console.warn(`⚠️ No details found for "${term}"`);
           results.push({ term, error: "Word details could not be fetched." });
@@ -309,24 +297,6 @@ export const assignImageToSubjectWord = async (
     console.error("❌ Error in assignImageToSubjectWord:", error);
     throw new Error("Failed to assign images to subject words");
   }
-};
-
-const waitForImageFilename = async (
-  promptId: string,
-  retries = 150,
-  delay = 4000
-): Promise<string | null> => {
-  for (let i = 0; i < retries; i++) {
-    const history = await getPromptHistory(promptId);
-    const outputNode = history?.[promptId]?.outputs?.["9"];
-
-    if (outputNode?.images?.length > 0 && outputNode.images[0].filename) {
-      return outputNode.images[0].filename;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, delay));
-  }
-  return null;
 };
 
 async function getWordDetailsInContext(word: string, subject: string) {

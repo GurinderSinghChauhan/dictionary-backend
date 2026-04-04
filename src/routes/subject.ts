@@ -9,6 +9,7 @@ import multer from "multer";
 import fs from "fs";
 import { requireAdmin } from "../middleware/auth";
 import { parseUniqueWordsFromDiskFile } from "../utils/wordList";
+import { getPositiveInteger } from "../utils/text";
 
 const router = express.Router();
 const upload = multer({ dest: "/tmp/uploads/" });
@@ -48,8 +49,8 @@ router.get("/:subject", async (req, res) => {
   console.log("🎯 Subject route hit:", req.params.subject);
   try {
     const subject = req.params.subject;
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
+    const page = getPositiveInteger(req.query.page, 1);
+    const limit = getPositiveInteger(req.query.limit, 10);
 
     const data = await getSubjectWords(subject, page, limit);
 
@@ -135,12 +136,9 @@ router.post(
 
 router.get("/", async (req, res) => {
   try {
-    const fullUrl = new URL(
-      req.protocol + "://" + req.get("host") + req.originalUrl
-    );
-    const subject = fullUrl.searchParams.get("subject") || "";
-    const page = parseInt(fullUrl.searchParams.get("page") || "1");
-    const limit = parseInt(fullUrl.searchParams.get("limit") || "10");
+    const subject = String(req.query.subject || "");
+    const page = getPositiveInteger(req.query.page, 1);
+    const limit = getPositiveInteger(req.query.limit, 10);
 
     if (!subject) {
       res.status(400).json({ success: false, error: "Subject is required." });

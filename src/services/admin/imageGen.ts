@@ -1,14 +1,12 @@
 import words from "../../models/words";
 import {
   getImage,
-  getPromptHistory,
   sendPromptAPI,
   uploadImageToS3,
 } from "../generateImageWithComfyUI";
 import { getWordDetails } from "../wordServices";
-
-const escapeRegex = (value: string) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+import { waitForImageFilename } from "../imagePolling";
+import { escapeRegex, normalizeWord } from "../../utils/text";
 
 export const defineManyWords = async (
   wordArray: string[],
@@ -21,7 +19,7 @@ export const defineManyWords = async (
   const results = [];
 
   for (const termRaw of wordArray) {
-    const term = termRaw.toLowerCase();
+    const term = normalizeWord(termRaw);
 
     let existing = await words.findOne({ word: term });
 
@@ -59,24 +57,6 @@ export const defineManyWords = async (
   }
 
   return { success: true, data: results };
-};
-
-const waitForImageFilename = async (
-  promptId: string,
-  retries = 150,
-  delay = 4000
-): Promise<string | null> => {
-  for (let i = 0; i < retries; i++) {
-    const history = await getPromptHistory(promptId);
-    const outputNode = history?.[promptId]?.outputs?.["9"];
-
-    if (outputNode?.images?.length > 0 && outputNode.images[0].filename) {
-      return outputNode.images[0].filename;
-    }
-
-    await new Promise((resolve) => setTimeout(resolve, delay));
-  }
-  return null;
 };
 
 export const getImagesByWords = async (wordList: string[]) => {

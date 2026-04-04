@@ -10,11 +10,10 @@ import {
 import ExamWords from "../models/examWords";
 import { requireAdmin } from "../middleware/auth";
 import { parseUniqueWordsFromDiskFile } from "../utils/wordList";
+import { escapeRegex, getPositiveInteger } from "../utils/text";
 
 const upload = multer({ dest: "/tmp/uploads/" });
 const router = express.Router();
-const escapeRegex = (value: string) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const cleanupUploadedFile = (file?: Express.Multer.File) => {
   if (!file?.path) return;
@@ -27,12 +26,9 @@ const cleanupUploadedFile = (file?: Express.Multer.File) => {
 
 router.get("/", async (req, res) => {
   try {
-    const fullUrl = new URL(
-      req.protocol + "://" + req.get("host") + req.originalUrl
-    );
-    const exam = fullUrl.searchParams.get("exam") || "";
-    const page = parseInt(fullUrl.searchParams.get("page") || "1");
-    const limit = parseInt(fullUrl.searchParams.get("limit") || "10");
+    const exam = String(req.query.exam || "");
+    const page = getPositiveInteger(req.query.page, 1);
+    const limit = getPositiveInteger(req.query.limit, 10);
 
     if (!exam) {
       res.status(400).json({ success: false, error: "Exam is required." });

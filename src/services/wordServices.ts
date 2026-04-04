@@ -1,15 +1,4 @@
-import { OpenAI } from "openai";
-import dotenv from "dotenv";
-
-dotenv.config();
-
-const getOpenAIClient = () => {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is required for generation features");
-  }
-  return new OpenAI({ apiKey });
-};
+import { getOpenAIClient } from "./openaiClient";
 
 export interface WordDetails {
   word: string;
