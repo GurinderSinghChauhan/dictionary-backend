@@ -1,5 +1,8 @@
 import words from "../../models/words";
 
+const escapeRegex = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 // Fetch all words with pagination and optional search
 export async function getAllWords({
   page = 1,
@@ -11,7 +14,9 @@ export async function getAllWords({
   search?: string;
 }) {
   const skip = (page - 1) * limit;
-  const query = search ? { word: { $regex: new RegExp(search, "i") } } : {};
+  const query = search
+    ? { word: { $regex: new RegExp(escapeRegex(search), "i") } }
+    : {};
 
   const [wordDocs, total] = await Promise.all([
     words

@@ -1,15 +1,20 @@
 // routes/uploadExcel.ts
-import axios from "axios";
 import express from "express";
 import multer from "multer";
-import xlsx from "xlsx";
 import words from "../models/words";
+import { requireAdmin } from "../middleware/auth";
+import { defineManyWords, getImagesByWords } from "../services/admin/imageGen";
+import { parseUniqueWordsFromUpload } from "../utils/wordList";
 
 const router = express.Router();
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-router.post("/upload-excel", upload.single("file"), async (req, res) => {
+router.post(
+  "/upload-excel",
+  requireAdmin,
+  upload.single("file"),
+  async (req, res) => {
   try {
     const file = req.file;
 
@@ -19,35 +24,9 @@ router.post("/upload-excel", upload.single("file"), async (req, res) => {
     }
 
     let uniqueWords: string[] = [];
-
-    // Handle Excel files
-    if (
-      file.mimetype ===
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-      file.mimetype === "application/vnd.ms-excel"
-    ) {
-      const workbook = xlsx.read(file.buffer, { type: "buffer" });
-      const sheetName = workbook.SheetNames[0];
-      const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], {
-        header: 1,
-      });
-      const flatWords = data.flat().filter(Boolean);
-      uniqueWords = Array.from(
-        new Set(flatWords.map((w) => String(w).trim().toLowerCase()))
-      );
-    }
-
-    // Handle .txt files
-    else if (file.mimetype === "text/plain") {
-      const text = file.buffer.toString("utf-8");
-      const words = text
-        .split(/\r?\n/) // split by lines
-        .flatMap((line) => line.split(",")) // further split by comma
-        .map((w) => w.trim())
-        .filter(Boolean);
-
-      uniqueWords = Array.from(new Set(words.map((w) => w.toLowerCase())));
-    } else {
+    try {
+      uniqueWords = parseUniqueWordsFromUpload(file);
+    } catch {
       res.status(400).json({ error: "Unsupported file type" });
       return;
     }
@@ -57,19 +36,25 @@ router.post("/upload-excel", upload.single("file"), async (req, res) => {
       return;
     }
 
-    const response = await axios.post(
-      "http://localhost:5006/admin/allWords/define-many",
-      { words: uniqueWords }
-    );
+    const promptStyle =
+      (req.body?.promptStyle as
+        | "meaning"
+        | "exampleSentence"
+        | "positivePrompt") || "positivePrompt";
+    const generationData = await defineManyWords(uniqueWords, promptStyle);
 
-    res.json({ words: response.data });
+    res.json({ success: true, data: generationData });
   } catch (error: any) {
     console.error("File Upload Error:", error?.response?.data || error.message);
     res.status(500).json({ error: error?.response?.data || error.message || "Failed to process file" });
   }
 });
 
-router.post("/assign-image", upload.single("file"), async (req, res) => {
+router.post(
+  "/assign-image",
+  requireAdmin,
+  upload.single("file"),
+  async (req, res) => {
   try {
     const file = req.file;
 
@@ -79,35 +64,9 @@ router.post("/assign-image", upload.single("file"), async (req, res) => {
     }
 
     let uniqueWords: string[] = [];
-
-    // Handle Excel files
-    if (
-      file.mimetype ===
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-      file.mimetype === "application/vnd.ms-excel"
-    ) {
-      const workbook = xlsx.read(file.buffer, { type: "buffer" });
-      const sheetName = workbook.SheetNames[0];
-      const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], {
-        header: 1,
-      });
-      const flatWords = data.flat().filter(Boolean);
-      uniqueWords = Array.from(
-        new Set(flatWords.map((w) => String(w).trim().toLowerCase()))
-      );
-    }
-
-    // Handle .txt files
-    else if (file.mimetype === "text/plain") {
-      const text = file.buffer.toString("utf-8");
-      const words = text
-        .split(/\r?\n/) // split by lines
-        .flatMap((line) => line.split(",")) // further split by comma
-        .map((w) => w.trim())
-        .filter(Boolean);
-
-      uniqueWords = Array.from(new Set(words.map((w) => w.toLowerCase())));
-    } else {
+    try {
+      uniqueWords = parseUniqueWordsFromUpload(file);
+    } catch {
       res.status(400).json({ error: "Unsupported file type" });
       return;
     }
@@ -117,12 +76,9 @@ router.post("/assign-image", upload.single("file"), async (req, res) => {
       return;
     }
 
-    const response = await axios.post(
-      "http://localhost:5006/admin/allWords/getImagesByWords",
-      { words: uniqueWords }
-    );
+    const assignmentData = await getImagesByWords(uniqueWords);
 
-    res.json({ words: response.data });
+    res.json({ success: true, data: assignmentData });
   } catch (error: any) {
     console.error("File Upload Error:", error?.response?.data || error.message);
     res.status(500).json({ error: error?.response?.data || error.message || "Failed to process file" });
@@ -130,7 +86,11 @@ router.post("/assign-image", upload.single("file"), async (req, res) => {
 });
 
 
-router.post("/delete-by-file", upload.single("file"), async (req, res) => {
+router.post(
+  "/delete-by-file",
+  requireAdmin,
+  upload.single("file"),
+  async (req, res) => {
   try {
     const file = req.file;
 
@@ -140,35 +100,11 @@ router.post("/delete-by-file", upload.single("file"), async (req, res) => {
     }
 
     let uniqueWords: string[] = [];
-
-    // Handle Excel files
-    if (
-      file.mimetype === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
-      file.mimetype === "application/vnd.ms-excel"
-    ) {
-      const workbook = xlsx.read(file.buffer, { type: "buffer" });
-      const sheetName = workbook.SheetNames[0];
-      const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], {
-        header: 1,
-      });
-      const flatWords = data.flat().filter(Boolean);
-      uniqueWords = Array.from(
-        new Set(flatWords.map((w) => String(w).trim().toLowerCase()))
-      );
-    }
-
-    // Handle .txt files
-    else if (file.mimetype === "text/plain") {
-      const text = file.buffer.toString("utf-8");
-      const words = text
-        .split(/\r?\n/)
-        .flatMap((line) => line.split(","))
-        .map((w) => w.trim())
-        .filter(Boolean);
-      uniqueWords = Array.from(new Set(words.map((w) => w.toLowerCase())));
-    } else {
-       res.status(400).json({ error: "Unsupported file type" });
-       return
+    try {
+      uniqueWords = parseUniqueWordsFromUpload(file);
+    } catch {
+      res.status(400).json({ error: "Unsupported file type" });
+      return;
     }
 
     if (uniqueWords.length === 0) {

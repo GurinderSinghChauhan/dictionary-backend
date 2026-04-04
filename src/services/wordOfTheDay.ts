@@ -1,8 +1,15 @@
 import { OpenAI } from "openai";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const getOpenAIClient = () => {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY is required for generation features");
+  }
+  return new OpenAI({ apiKey });
+};
 
 export async function getRandomWordFromOpenAI(): Promise<string> {
+  const openai = getOpenAIClient();
   const prompt =
     "Give me a single rare English word (no meaning), one word only.";
   const response = await openai.chat.completions.create({

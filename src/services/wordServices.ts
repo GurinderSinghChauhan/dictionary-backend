@@ -3,9 +3,13 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const getOpenAIClient = () => {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY is required for generation features");
+  }
+  return new OpenAI({ apiKey });
+};
 
 export interface WordDetails {
   word: string;
@@ -24,6 +28,7 @@ export interface WordDetails {
 }
 
 export async function getWordDetails(word: string): Promise<WordDetails> {
+  const openai = getOpenAIClient();
   const prompt = `
     Provide a detailed dictionary-style breakdown of the word: "${word}". 
     Format your response as a valid JSON object with the following keys exactly:

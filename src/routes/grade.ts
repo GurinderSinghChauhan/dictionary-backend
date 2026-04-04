@@ -1,4 +1,4 @@
-import express from "express";
+import express, { Express } from "express";
 import multer from "multer";
 import fs from "fs";
 import {
@@ -7,114 +7,116 @@ import {
   getGradeWords,
 } from "../services/gradeWord";
 import GradeWords from "../models/gradeWords";
-const upload = multer({ dest: "uploads/" });
+import { requireAdmin } from "../middleware/auth";
+import { parseUniqueWordsFromDiskFile } from "../utils/wordList";
+const upload = multer({ dest: "/tmp/uploads/" });
+const escapeRegex = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const cleanupUploadedFile = (file?: Express.Multer.File) => {
+  if (!file?.path) return;
+  try {
+    fs.unlinkSync(file.path);
+  } catch {
+    // best-effort cleanup
+  }
+};
 
 const router = express.Router();
 
-router.post("/upload", upload.single("file"), async (req, res) => {
-  try {
+router.post(
+  "/upload",
+  requireAdmin,
+  upload.single("file"),
+  async (req, res) => {
+    const { grade } = req.body;
+    const file = req.file;
+    const promptStyle = req.body.promptStyle || "positivePrompt";
+
+    try {
+      if (!grade || !file) {
+        res.status(400).json({ error: "Grade and file are required." });
+        return;
+      }
+
+      // Ensure the grade document exists (case-insensitive check)
+      let gradeEntry = await GradeWords.findOne({
+        grade: new RegExp(`^${escapeRegex(grade)}$`, "i"),
+      });
+
+      if (!gradeEntry) {
+        gradeEntry = await GradeWords.create({ grade, words: [] });
+        console.log(`🆕 Grade "${grade}" created.`);
+      }
+
+      const wordList = parseUniqueWordsFromDiskFile(file.path);
+      if (wordList.length === 0) {
+        res.status(400).json({ error: "No valid words found in the file." });
+        return;
+      }
+
+      // Process word list to generate images and metadata
+      const data = await generateImageForGrade(
+        grade,
+        wordList,
+        promptStyle as "meaning" | "exampleSentence" | "positivePrompt"
+      );
+      await assignImageToGradeWord(grade, wordList);
+
+      res.status(200).json({ success: true, data });
+    } catch (err) {
+      console.error("❌ Error uploading grade words:", err);
+      res.status(500).json({ error: "Server error." });
+    } finally {
+      cleanupUploadedFile(file);
+    }
+  }
+);
+
+router.post(
+  "/assign",
+  requireAdmin,
+  upload.single("file"),
+  async (req, res) => {
     const { grade } = req.body;
     const file = req.file;
 
-    if (!grade || !file) {
-      res.status(400).json({ error: "Grade and file are required." });
-      return;
+    try {
+      if (!grade || !file) {
+        res.status(400).json({ error: "Grade and file are required." });
+        return;
+      }
+
+      const words = parseUniqueWordsFromDiskFile(file.path);
+      if (words.length === 0) {
+        res.status(400).json({ error: "No valid words found in the file." });
+        return;
+      }
+
+      // Call uploadGradeWords with grade and list of words
+      const data = await assignImageToGradeWord(grade, words);
+
+      res.status(200).json({ success: true, data });
+    } catch (err) {
+      console.error("❌ Error uploading grade words:", err);
+      res.status(500).json({ error: "Server error." });
+    } finally {
+      cleanupUploadedFile(file);
     }
-
-    // Ensure the grade document exists (case-insensitive check)
-    let gradeEntry = await GradeWords.findOne({
-      grade: new RegExp(`^${grade}$`, "i"),
-    });
-
-    if (!gradeEntry) {
-      gradeEntry = await GradeWords.create({ grade, words: [] });
-      console.log(`🆕 Grade "${grade}" created.`);
-    }
-
-    // Extract words from uploaded file
-    const content = fs.readFileSync(file.path, "utf-8");
-    const wordListRaw = content
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-
-    const seen = new Set<string>();
-    const wordList = wordListRaw.filter((word) => {
-      const lower = word.toLowerCase();
-      if (seen.has(lower)) return false;
-      seen.add(lower);
-      return true;
-    });
-
-    
-    if (wordList.length === 0) {
-      fs.unlinkSync(file.path);
-      res.status(400).json({ error: "No valid words found in the file." });
-      return;
-    }
-
-    // Process word list to generate images and metadata
-    const data = await generateImageForGrade(grade, wordList, req.body.promptStyle || "positivePrompt");
-    const dataImageAssignment = await assignImageToGradeWord(grade, wordList);
-
-    fs.unlinkSync(file.path); // Clean up uploaded file
-
-    res.status(200).json({ success: true, data });
-    return;
-  } catch (err) {
-    console.error("❌ Error uploading grade words:", err);
-    res.status(500).json({ error: "Server error." });
-    return;
   }
-});
-
-router.post("/assign", upload.single("file"), async (req, res) => {
-  try {
-    const { grade } = req.body;
-    const file = req.file;
-
-    if (!grade || !file) {
-      res.status(400).json({ error: "Grade and file are required." });
-      return;
-    }
-
-    // Read file content and extract word list
-    const content = fs.readFileSync(file.path, "utf-8");
-    const words = content
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line);
-
-    if (words.length === 0) {
-      fs.unlinkSync(file.path);
-      res.status(400).json({ error: "No valid words found in the file." });
-      return;
-    }
-
-    // Call uploadGradeWords with grade and list of words
-    const data = await assignImageToGradeWord(grade, words);
-
-    // Delete the uploaded file after processing
-    fs.unlinkSync(file.path);
-
-    res.status(200).json({ success: true, data });
-  } catch (err) {
-    console.error("❌ Error uploading grade words:", err);
-    res.status(500).json({ error: "Server error." });
-  }
-});
+);
 
 router.get("/", async (req, res) => {
   try {
     const fullUrl = new URL(
       req.protocol + "://" + req.get("host") + req.originalUrl
     );
-    const grade = fullUrl.searchParams.get("grade") || "act";
+    const grade = fullUrl.searchParams.get("grade") || "";
     const page = parseInt(fullUrl.searchParams.get("page") || "1");
     const limit = parseInt(fullUrl.searchParams.get("limit") || "10");
 
     if (!grade) {
-      res.status(400).json({ success: false, error: "Exam is required." });
+      res.status(400).json({ success: false, error: "Grade is required." });
       return;
     }
 

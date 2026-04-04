@@ -8,7 +8,16 @@ import {
 } from "./generateImageWithComfyUI";
 import { WordDetails } from "./wordServices";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const getOpenAIClient = () => {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY is required for generation features");
+  }
+  return new OpenAI({ apiKey });
+};
+
+const escapeRegex = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export const generateImageForExam = async (
   exam: string,
@@ -23,7 +32,7 @@ export const generateImageForExam = async (
       .filter(Boolean);
 
     let examEntry = await ExamWords.findOne({
-      exam: new RegExp(`^${exam}$`, "i"),
+      exam: new RegExp(`^${escapeRegex(exam)}$`, "i"),
     });
 
     if (!examEntry) {
@@ -91,7 +100,7 @@ export const assignImageToExamWord = async (
     const results: any[] = [];
 
     const examDoc = await ExamWords.findOne({
-      exam: new RegExp(`^${exam}$`, "i"),
+      exam: new RegExp(`^${escapeRegex(exam)}$`, "i"),
     });
     if (!examDoc) throw new Error(`Exam "${exam}" not found`);
 
@@ -134,8 +143,8 @@ export const assignImageToExamWord = async (
 
       const updated = await ExamWords.findOneAndUpdate(
         {
-          exam: new RegExp(`^${exam}$`, "i"),
-          "words.word": new RegExp(`^${word}$`, "i"),
+          exam: new RegExp(`^${escapeRegex(exam)}$`, "i"),
+          "words.word": new RegExp(`^${escapeRegex(word)}$`, "i"),
         },
         {
           $set: { "words.$.imageURL": imageAWSURL },
@@ -154,6 +163,7 @@ export const assignImageToExamWord = async (
 };
 
 async function getWordDetailsInContext(word: string, context: string) {
+  const openai = getOpenAIClient();
   const prompt = `
     The word '${word}' is used in the context of '${context}'.
     Provide a detailed dictionary-style breakdown of the word: "${word}" in this context.
@@ -217,7 +227,7 @@ export const getExamWords = async (
   if (!exam) throw new Error("Exam is required.");
 
   const result = await ExamWords.findOne({
-    exam: new RegExp(`^${exam}$`, "i"),
+    exam: new RegExp(`^${escapeRegex(exam)}$`, "i"),
   });
 
   if (!result) throw new Error("Exam not found.");

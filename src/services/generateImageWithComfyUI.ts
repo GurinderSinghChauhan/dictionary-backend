@@ -7,11 +7,18 @@ const comfyURL = 'http://127.0.0.1:8188'
 
 dotenv.config();
 
-AWS.config.update({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: "eu-north-1", // your region
-});
+if (AWS.config.update) {
+  AWS.config.update({
+    region: "eu-north-1",
+  });
+}
+
+if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+  AWS.config.credentials = new AWS.Credentials(
+    process.env.AWS_ACCESS_KEY_ID,
+    process.env.AWS_SECRET_ACCESS_KEY
+  );
+}
 
 const s3 = new AWS.S3();
 
@@ -60,6 +67,14 @@ export async function uploadImageToS3(imageUrl: any, filename: any) {
     ACL: "public-read",
   };
 
-  const uploadResult = await s3.upload(params).promise();
+  const uploadResult = await new Promise<any>((resolve, reject) => {
+    s3.upload(params, undefined, (err: Error, data: any) => {
+      if (err) {
+        reject(err);
+      } else {
+        resolve(data);
+      }
+    });
+  });
   return uploadResult.Location; // Public URL
 }

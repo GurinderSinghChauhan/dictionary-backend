@@ -1,0 +1,26 @@
+# Node.js
+node_modules/
+npm-debug.log*
+.yarn-
+
+# IDE files
+.DS_Store
+.idea/
+.vscode/
+
+# Environment variables
+.env
+
+# Logs
+logs/
+*.log
+
+# Build output
+/dist
+
+# Temporary files
+/tmp
+
+# Uploads (if not versioned)
+uploads/
+.vercel

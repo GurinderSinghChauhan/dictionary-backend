@@ -1,5 +1,5 @@
 // src/routes/exam.ts
-import express from "express";
+import express, { Express } from "express";
 import multer from "multer";
 import fs from "fs";
 import {
@@ -8,16 +8,29 @@ import {
   getExamWords,
 } from "../services/examWord";
 import ExamWords from "../models/examWords";
+import { requireAdmin } from "../middleware/auth";
+import { parseUniqueWordsFromDiskFile } from "../utils/wordList";
 
-const upload = multer({ dest: "uploads/" });
+const upload = multer({ dest: "/tmp/uploads/" });
 const router = express.Router();
+const escapeRegex = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const cleanupUploadedFile = (file?: Express.Multer.File) => {
+  if (!file?.path) return;
+  try {
+    fs.unlinkSync(file.path);
+  } catch {
+    // best-effort cleanup
+  }
+};
 
 router.get("/", async (req, res) => {
   try {
     const fullUrl = new URL(
       req.protocol + "://" + req.get("host") + req.originalUrl
     );
-    const exam = fullUrl.searchParams.get("exam") || "act";
+    const exam = fullUrl.searchParams.get("exam") || "";
     const page = parseInt(fullUrl.searchParams.get("page") || "1");
     const limit = parseInt(fullUrl.searchParams.get("limit") || "10");
 
@@ -41,86 +54,83 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.post("/upload", upload.single("file"), async (req, res) => {
-  try {
+router.post(
+  "/upload",
+  requireAdmin,
+  upload.single("file"),
+  async (req, res) => {
+    const { exam } = req.body;
+    const file = req.file;
+    const promptStyle = req.body.promptStyle || "positivePrompt";
+
+    try {
+      if (!exam || !file) {
+        res.status(400).json({ error: "Exam and file are required." });
+        return;
+      }
+
+      let examEntry = await ExamWords.findOne({
+        exam: new RegExp(`^${escapeRegex(exam)}$`, "i"),
+      });
+
+      if (!examEntry) {
+        examEntry = await ExamWords.create({ exam, words: [] });
+        console.log(`🆕 Exam "${exam}" created.`);
+      }
+
+      const wordList = parseUniqueWordsFromDiskFile(file.path);
+      if (wordList.length === 0) {
+        res.status(400).json({ error: "No valid words found in the file." });
+        return;
+      }
+
+      const generationData = await generateImageForExam(
+        exam,
+        wordList,
+        promptStyle as "meaning" | "exampleSentence" | "positivePrompt"
+      );
+      await assignImageToExamWord(exam, wordList);
+
+      res.status(200).json({ success: true, data: generationData });
+    } catch (err) {
+      console.error("❌ Error uploading exam words:", err);
+      res.status(500).json({ error: "Server error." });
+    } finally {
+      cleanupUploadedFile(file);
+    }
+  }
+);
+
+router.post(
+  "/assign",
+  requireAdmin,
+  upload.single("file"),
+  async (req, res) => {
     const { exam } = req.body;
     const file = req.file;
 
-    if (!exam || !file) {
-      res.status(400).json({ error: "Exam and file are required." });
-      return;
+    try {
+      if (!exam || !file) {
+        res.status(400).json({ error: "Exam and file are required." });
+        return;
+      }
+
+      const words = parseUniqueWordsFromDiskFile(file.path);
+      if (words.length === 0) {
+        res.status(400).json({ error: "No valid words found in the file." });
+        return;
+      }
+
+      const data = await assignImageToExamWord(exam, words);
+
+      res.status(200).json({ success: true, data });
+    } catch (err) {
+      console.error("❌ Error assigning images for exam words:", err);
+      res.status(500).json({ error: "Server error." });
+    } finally {
+      cleanupUploadedFile(file);
     }
-
-    let examEntry = await ExamWords.findOne({
-      exam: new RegExp(`^${exam}$`, "i"),
-    });
-
-    if (!examEntry) {
-      examEntry = await ExamWords.create({ exam, words: [] });
-      console.log(`🆕 Exam \"${exam}\" created.`);
-    }
-
-    const content = fs.readFileSync(file.path, "utf-8");
-    const wordListRaw = content
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-
-    if (wordListRaw.length === 0) {
-      fs.unlinkSync(file.path);
-      res.status(400).json({ error: "No valid words found in the file." });
-      return;
-    }
-    const seen = new Set<string>();
-    const wordList = wordListRaw.filter((word) => {
-      const lower = word.toLowerCase();
-      if (seen.has(lower)) return false;
-      seen.add(lower);
-      return true;
-    });
-    const generationData = await generateImageForExam(exam, wordList, req.body.promptStyle || "positivePrompt");
-    const assignmentData = await assignImageToExamWord(exam, wordList);
-
-    fs.unlinkSync(file.path);
-
-    res.status(200).json({ success: true, data: generationData });
-  } catch (err) {
-    console.error("❌ Error uploading exam words:", err);
-    res.status(500).json({ error: "Server error." });
   }
-});
-
-router.post("/assign", upload.single("file"), async (req, res) => {
-  try {
-    const { exam } = req.body;
-    const file = req.file;
-
-    if (!exam || !file) {
-      res.status(400).json({ error: "Exam and file are required." });
-      return;
-    }
-
-    const content = fs.readFileSync(file.path, "utf-8");
-    const words = content
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-
-    if (words.length === 0) {
-      fs.unlinkSync(file.path);
-      res.status(400).json({ error: "No valid words found in the file." });
-      return;
-    }
-
-    const data = await assignImageToExamWord(exam, words);
-
-    fs.unlinkSync(file.path);
-
-    res.status(200).json({ success: true, data });
-  } catch (err) {
-    console.error("❌ Error assigning images for exam words:", err);
-    res.status(500).json({ error: "Server error." });
-  }
-});
+);
 
 export default router;

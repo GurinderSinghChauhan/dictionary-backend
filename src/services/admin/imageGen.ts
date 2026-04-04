@@ -1,4 +1,3 @@
-import { Request, Response } from "express";
 import words from "../../models/words";
 import {
   getImage,
@@ -7,6 +6,9 @@ import {
   uploadImageToS3,
 } from "../generateImageWithComfyUI";
 import { getWordDetails } from "../wordServices";
+
+const escapeRegex = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export const defineManyWords = async (
   wordArray: string[],
@@ -61,7 +63,7 @@ export const defineManyWords = async (
 
 const waitForImageFilename = async (
   promptId: string,
-  retries = 1,
+  retries = 150,
   delay = 4000
 ): Promise<string | null> => {
   for (let i = 0; i < retries; i++) {
@@ -87,7 +89,7 @@ export const getImagesByWords = async (wordList: string[]) => {
   for (const word of wordList) {
     try {
       const wordDoc = await words.findOne({
-        word: new RegExp(`^${word}$`, "i"),
+        word: new RegExp(`^${escapeRegex(word)}$`, "i"),
       });
 
       if (!wordDoc || !wordDoc.promptId) {
@@ -123,7 +125,7 @@ export const getImagesByWords = async (wordList: string[]) => {
       const s3URL = await uploadImageToS3(imageURL, cleanFilename);
 
       const updated = await words.findOneAndUpdate(
-        { word: new RegExp(`^${word}$`, "i") },
+        { word: new RegExp(`^${escapeRegex(word)}$`, "i") },
         { $set: { imageURL: s3URL } },
         { new: true }
       );

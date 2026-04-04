@@ -1,7 +1,5 @@
 // controllers/subject.ts
-import { Request, Response } from "express";
 import SubjectWords from "../models/subjectWords";
-import multer from "multer";
 import { OpenAI } from "openai";
 import dotenv from "dotenv";
 import { WordDetails } from "./wordServices";
@@ -14,31 +12,32 @@ import {
 
 dotenv.config();
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const getOpenAIClient = () => {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY is required for generation features");
+  }
+  return new OpenAI({ apiKey });
+};
+
+const escapeRegex = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 // Add or update words for a subject
-export const addSubjectWords = async (req: Request, res: Response) => {
+export const addSubjectWords = async (subject: string, words: unknown[]) => {
   try {
-    const { subject, words } = req.body;
-
     if (!subject || !Array.isArray(words) || words.length === 0) {
-      return res
-        .status(400)
-        .json({ error: "Subject and words array are required." });
+      throw new Error("Subject and words array are required.");
     }
 
-    const updated = await SubjectWords.findOneAndUpdate(
-      { subject: new RegExp(`^${subject}$`, "i") },
+    return await SubjectWords.findOneAndUpdate(
+      { subject: new RegExp(`^${escapeRegex(subject)}$`, "i") },
       { $set: { subject }, $push: { words: { $each: words } } },
       { new: true, upsert: true }
     );
-
-    res.status(200).json({ success: true, data: updated });
   } catch (err) {
     console.error("❌ Error adding subject words:", err);
-    res.status(500).json({ error: "Server error." });
+    throw err;
   }
 };
 
@@ -83,7 +82,7 @@ export const uploadSubjectWords = async (
 
     // Get existing words for the subject
     const existingEntry = await SubjectWords.findOne({
-      subject: new RegExp(`^${subject}$`, "i"),
+      subject: new RegExp(`^${escapeRegex(subject)}$`, "i"),
     });
 
     const existingWords = new Set<string>(
@@ -111,7 +110,7 @@ export const uploadSubjectWords = async (
     }
     // Insert only new words
     const updated = await SubjectWords.findOneAndUpdate(
-      { subject: new RegExp(`^${subject}$`, "i") },
+      { subject: new RegExp(`^${escapeRegex(subject)}$`, "i") },
       { $set: { subject }, $push: { words: { $each: addedWords } } },
       { new: true, upsert: true }
     );
@@ -144,7 +143,7 @@ export const generateImageForSubject = async (
 
     // 🔎 Check if subject exists; if not, create it
     let subjectEntry = await SubjectWords.findOne({
-      subject: new RegExp(`^${subject}$`, "i"),
+      subject: new RegExp(`^${escapeRegex(subject)}$`, "i"),
     });
 
     if (!subjectEntry) {
@@ -248,7 +247,7 @@ export const assignImageToSubjectWord = async (
     const results: any[] = [];
 
     const subjectDoc = await SubjectWords.findOne({
-      subject: new RegExp(`^${subject}$`, "i"),
+      subject: new RegExp(`^${escapeRegex(subject)}$`, "i"),
     });
     if (!subjectDoc) {
       throw new Error(`Subject "${subject}" not found`);
@@ -293,8 +292,8 @@ export const assignImageToSubjectWord = async (
 
       const updated = await SubjectWords.findOneAndUpdate(
         {
-          subject: new RegExp(`^${subject}$`, "i"),
-          "words.word": new RegExp(`^${word}$`, "i"),
+          subject: new RegExp(`^${escapeRegex(subject)}$`, "i"),
+          "words.word": new RegExp(`^${escapeRegex(word)}$`, "i"),
         },
         {
           $set: { "words.$.imageURL": imageAWSURL },
@@ -331,6 +330,7 @@ const waitForImageFilename = async (
 };
 
 async function getWordDetailsInContext(word: string, subject: string) {
+  const openai = getOpenAIClient();
   const subjectPrompt = `The word '${word}' is used in the context of the subject '${subject}'.`;
 
   const prompt = `
@@ -402,13 +402,13 @@ export const getSubjectWords = async (
   page: number,
   limit: number
 ) => {
-  if (!subject) throw new Error("Exam is required.");
+  if (!subject) throw new Error("Subject is required.");
 
   const result = await SubjectWords.findOne({
-    subject: new RegExp(`^${subject}$`, "i"),
+    subject: new RegExp(`^${escapeRegex(subject)}$`, "i"),
   });
 
-  if (!result) throw new Error("Exam not found.");
+  if (!result) throw new Error("Subject not found.");
 
   const startIndex = (page - 1) * limit;
 

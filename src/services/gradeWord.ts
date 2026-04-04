@@ -8,9 +8,16 @@ import {
 } from "./generateImageWithComfyUI";
 import GradeWords from "../models/gradeWords";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+const getOpenAIClient = () => {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY is required for generation features");
+  }
+  return new OpenAI({ apiKey });
+};
+
+const escapeRegex = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 export const generateImageForGrade = async (
   grade: string,
@@ -28,7 +35,7 @@ export const generateImageForGrade = async (
     console.log("🧹 Cleaned word list:", cleanedWords);
 
     let gradeEntry = await GradeWords.findOne({
-      grade: new RegExp(`^${grade}$`, "i"),
+      grade: new RegExp(`^${escapeRegex(grade)}$`, "i"),
     });
 
     if (!gradeEntry) {
@@ -123,6 +130,7 @@ export const generateImageForGrade = async (
 };
 
 async function getWordDetailsInContext(word: string, context: string) {
+  const openai = getOpenAIClient();
   const isGrade = context.toLowerCase().startsWith("grade");
   const contextPrompt = isGrade
     ? `The word '${word}' is used in the learning context of '${context}', which refers to a school grade level.`
@@ -198,7 +206,7 @@ export const assignImageToGradeWord = async (
     const results: any[] = [];
 
     const gradeDoc = await GradeWords.findOne({
-      grade: new RegExp(`^${grade}$`, "i"),
+      grade: new RegExp(`^${escapeRegex(grade)}$`, "i"),
     });
     if (!gradeDoc) {
       throw new Error(`Grade "${grade}" not found`);
@@ -243,8 +251,8 @@ export const assignImageToGradeWord = async (
 
       const updated = await GradeWords.findOneAndUpdate(
         {
-          grade: new RegExp(`^${grade}$`, "i"),
-          "words.word": new RegExp(`^${word}$`, "i"),
+          grade: new RegExp(`^${escapeRegex(grade)}$`, "i"),
+          "words.word": new RegExp(`^${escapeRegex(word)}$`, "i"),
         },
         {
           $set: { "words.$.imageURL": imageAWSURL },
@@ -285,13 +293,13 @@ export const getGradeWords = async (
   page: number,
   limit: number
 ) => {
-  if (!grade) throw new Error("Exam is required.");
+  if (!grade) throw new Error("Grade is required.");
 
   const result = await GradeWords.findOne({
-    grade: new RegExp(`^${grade}$`, "i"),
+    grade: new RegExp(`^${escapeRegex(grade)}$`, "i"),
   });
 
-  if (!result) throw new Error("Exam not found.");
+  if (!result) throw new Error("Grade not found.");
 
   const startIndex = (page - 1) * limit;
 
