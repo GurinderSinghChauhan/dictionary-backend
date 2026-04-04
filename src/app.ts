@@ -29,6 +29,7 @@ const configuredOrigins = (process.env.CORS_ORIGINS || "")
 
 const allowedOrigins = new Set([
   "https://grab-vocab.vercel.app",
+  "https://grabvocab-ui.vercel.app",
   "http://localhost:5173",
   "http://localhost:8081",
   "http://localhost:8082",
