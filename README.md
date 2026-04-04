@@ -62,10 +62,6 @@ vercel --prod
 Workflows are included in:
 
 - `.github/workflows/ci.yml` (install + TypeScript build on push/PR)
-- `.github/workflows/vercel-deploy.yml` (deploy to Vercel on `main`)
 
-Configure these repository secrets before enabling deploy workflow:
-
-- `VERCEL_TOKEN`
-- `VERCEL_ORG_ID`
-- `VERCEL_PROJECT_ID`
+Deployment is handled through Vercel Git Integration (recommended), so no
+GitHub repository deploy secrets are required for this backend repo.
