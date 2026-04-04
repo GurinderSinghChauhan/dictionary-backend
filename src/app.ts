@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import rateLimit from "express-rate-limit";
+import path from "path";
 import words from "./models/words";
 import wordOfTheDay from "./models/wordOfTheDay";
 import { getImage, uploadImageToS3 } from "./services/generateImageWithComfyUI";
@@ -21,52 +22,6 @@ const limiter = rateLimit({
 });
 
 const app = express();
-const swaggerHtml = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Swagger UI - Dictionary Backend API Docs</title>
-  <link
-    rel="stylesheet"
-    href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css"
-  />
-  <style>
-    html {
-      box-sizing: border-box;
-      overflow-y: scroll;
-    }
-
-    *, *:before, *:after {
-      box-sizing: inherit;
-    }
-
-    body {
-      margin: 0;
-      background: #fafafa;
-    }
-  </style>
-</head>
-<body>
-  <div id="swagger-ui"></div>
-  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js"></script>
-  <script>
-    window.onload = () => {
-      window.ui = window.SwaggerUIBundle({
-        url: "/openapi.json",
-        dom_id: "#swagger-ui",
-        deepLinking: true,
-        presets: [
-          window.SwaggerUIBundle.presets.apis,
-          window.SwaggerUIStandalonePreset
-        ],
-        layout: "StandaloneLayout"
-      });
-    };
-  </script>
-</body>
-</html>`;
 const configuredOrigins = (process.env.CORS_ORIGINS || "")
   .split(",")
   .map((origin) => origin.trim())
@@ -122,7 +77,7 @@ app.set("trust proxy", 1);
 app.use(limiter);
 
 app.get(/^\/docs\/?$/, (_req, res) => {
-  res.type("html").send(swaggerHtml);
+  res.sendFile(path.join(process.cwd(), "public", "swagger.html"));
 });
 
 app.get("/openapi.json", (req, res) => {
