@@ -7,8 +7,10 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "moduleResolution": "node",
-    "outDir": "./dist",
-    "resolveJsonModule": true
+    "resolveJsonModule": true,
+    "outDir": "dist",
+    "types": ["node"]
   },
-  "include": ["./src/**/*"]
+  "include": ["src/**/*.ts", "api/**/*.ts"],
+  "exclude": ["node_modules", "dist", "uploads", ".vercel"]
 }
