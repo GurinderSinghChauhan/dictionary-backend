@@ -17,6 +17,7 @@ logs/
 
 # Build output
 /dist
+/coverage
 
 # Temporary files
 /tmp
