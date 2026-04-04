@@ -125,11 +125,7 @@ app.use(express.json());
 app.set("trust proxy", 1);
 app.use(limiter);
 
-app.get("/docs", (_req, res) => {
-  res.redirect("/docs/");
-});
-
-app.get("/docs/", (_req, res) => {
+app.get(/^\/docs\/?$/, (_req, res) => {
   res.type("html").send(swaggerHtml);
 });
 
