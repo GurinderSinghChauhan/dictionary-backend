@@ -354,4 +354,49 @@ router.get(
   }
 );
 
+router.get(
+  "/profile",
+  authenticateToken,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const user = await User.findById(req.user?.id).select(
+        "_id username email isAdmin"
+      );
+      if (!user) {
+        res.status(404).json({ message: "User not found" });
+        return;
+      }
+
+      res.status(200).json({ user: serializeUser(user) });
+    } catch (err: any) {
+      res.status(500).json({ message: "Server error", error: err.message });
+    }
+  }
+);
+
+router.post(
+  "/refresh",
+  authenticateToken,
+  async (req: AuthenticatedRequest, res: Response) => {
+    try {
+      const user = await User.findById(req.user?.id).select(
+        "_id username email isAdmin"
+      );
+      if (!user) {
+        res.status(404).json({ message: "User not found" });
+        return;
+      }
+
+      const token = signToken(user);
+      res.status(200).json({ token, user: serializeUser(user) });
+    } catch (err: any) {
+      res.status(500).json({ message: "Server error", error: err.message });
+    }
+  }
+);
+
+router.post("/logout", async (_req: Request, res: Response) => {
+  res.status(200).json({ success: true });
+});
+
 export default router;

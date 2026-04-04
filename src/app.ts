@@ -286,5 +286,6 @@ app.use("/api", uploadExcelRouter);
 app.use("/auth", authRoutes);
 app.use("/exam", examRouter);
 app.use("/words", allWordsRoutes);
+app.use("/allWords", allWordsRoutes);
 
 export default app;

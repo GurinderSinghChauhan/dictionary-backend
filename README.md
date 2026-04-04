@@ -35,10 +35,10 @@ EXPO_PUBLIC_API_BASE_URL=http://localhost:5000
 
 ## Deploy To Vercel
 
-This repo is configured for Vercel serverless deployment via:
+This repo is configured for Vercel deployment via:
 
-- `api/index.ts` (Vercel function entry)
-- `vercel.json` (routes all requests to the function)
+- `src/app.ts` (Express app entry)
+- `vercel.json` (Vercel Express framework config)
 
 ### Required environment variables
 
@@ -48,6 +48,7 @@ This repo is configured for Vercel serverless deployment via:
 - `GOOGLE_CLIENT_ID` (and platform client IDs if needed)
 - `AWS_ACCESS_KEY_ID`
 - `AWS_SECRET_ACCESS_KEY`
+- `COMFYUI_BASE_URL` (required if image generation routes are used on Vercel)
 - `CORS_ORIGINS` (comma-separated frontend origins)
 
 ### Deploy

@@ -206,6 +206,27 @@ router.post(
   }
 );
 
+router.post("/add", requireAdmin, async (req, res) => {
+  try {
+    const wordList = Array.isArray(req.body?.words)
+      ? req.body.words
+          .map((word: unknown) => String(word || "").trim().toLowerCase())
+          .filter(Boolean)
+      : [];
+
+    if (!wordList.length) {
+      res.status(400).json({ error: "Body must include non-empty words array" });
+      return;
+    }
+
+    const generationData = await defineManyWords(wordList, "positivePrompt");
+    res.status(200).json({ success: true, data: generationData });
+  } catch (err) {
+    console.error("❌ Error adding words:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 /**
  * @swagger
  * /words/getImagesByWords:
