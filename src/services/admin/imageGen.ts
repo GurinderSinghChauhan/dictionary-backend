@@ -6,6 +6,7 @@ import {
 } from "../generateImageWithComfyUI";
 import { getWordDetails } from "../wordServices";
 import { waitForImageFilename } from "../imagePolling";
+import { logger } from "../../utils/logger";
 import { escapeRegex, normalizeWord } from "../../utils/text";
 
 export const defineManyWords = async (
@@ -33,7 +34,7 @@ export const defineManyWords = async (
         continue;
       }
 
-      console.log(`🆕 Word "${term}" found, generating promptId...`);
+      logger.info("Generating prompt for existing word", { word: term });
       const promptId = await sendPromptAPI(
         promptStyle ? existing[promptStyle] : existing.positivePrompt
       );
@@ -44,7 +45,7 @@ export const defineManyWords = async (
     }
 
     const wordData = await getWordDetails(term);
-    console.log(`🆕 Word "${term}" new, generating promptId...`);
+    logger.info("Generating prompt for new word", { word: term });
     const promptId = await sendPromptAPI(
       promptStyle ? wordData[promptStyle] : wordData.positivePrompt
     );
@@ -117,7 +118,7 @@ export const getImagesByWords = async (wordList: string[]) => {
         updated,
       });
     } catch (err: any) {
-      console.error(`❌ Error for word "${word}":`, err);
+      logger.error("Error fetching image for word", { word, error: err });
       results.push({ word, status: "error", message: err.message });
     }
   }

@@ -3,11 +3,8 @@ import cors from "cors";
 import rateLimit from "express-rate-limit";
 import words from "./models/words";
 import wordOfTheDay from "./models/wordOfTheDay";
-import {
-  getImage,
-  getPromptHistory,
-  uploadImageToS3,
-} from "./services/generateImageWithComfyUI";
+import { getImage, uploadImageToS3 } from "./services/generateImageWithComfyUI";
+import { waitForImageFilename } from "./services/imagePolling";
 import authRoutes from "./routes/auth";
 import allWordsRoutes from "./routes/allWords";
 import uploadExcelRouter from "./routes/uploadExcel";
@@ -15,6 +12,8 @@ import subjectRouter from "./routes/subject";
 import gradeRouter from "./routes/grade";
 import examRouter from "./routes/exam";
 import { swaggerSpec } from "./config/swagger";
+import { logger } from "./utils/logger";
+import { escapeRegex } from "./utils/text";
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -68,9 +67,6 @@ const swaggerHtml = `<!DOCTYPE html>
   </script>
 </body>
 </html>`;
-const escapeRegex = (value: string) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
 const configuredOrigins = (process.env.CORS_ORIGINS || "")
   .split(",")
   .map((origin) => origin.trim())
@@ -193,7 +189,7 @@ app.get("/define/:word", async (req, res) => {
     }
     res.status(404).json({ error: `Word '${term}' not found in database.` });
   } catch (err) {
-    console.error("❌ Error fetching word details:", err);
+    logger.error("Error fetching word details", err);
     res.status(500).json({ error: "Something went wrong" });
   }
 });
@@ -231,24 +227,6 @@ app.get("/getImageURL/:promptId/:word", async (req, res) => {
   try {
     const { promptId, word } = req.params;
 
-    const waitForImageFilename = async (
-      currentPromptId: string,
-      retries = 150,
-      delay = 4000
-    ) => {
-      for (let i = 0; i < retries; i++) {
-        const history = await getPromptHistory(currentPromptId);
-        const outputNode = history?.[currentPromptId]?.outputs?.["9"];
-
-        if (outputNode?.images?.length > 0 && outputNode.images[0].filename) {
-          return outputNode.images[0].filename;
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-      return null;
-    };
-
     const filename = await waitForImageFilename(promptId);
     if (!filename) {
       res.status(202).json({ message: "Image not ready", status: "pending" });
@@ -271,7 +249,7 @@ app.get("/getImageURL/:promptId/:word", async (req, res) => {
     res.json({ word, imageURL, status: "success", updated });
     return;
   } catch (err) {
-    console.error("Error in getImageURL:", err);
+    logger.error("Error getting image URL", err);
     res.status(500).json({ error: "Failed to fetch image" });
   }
 });
@@ -323,7 +301,7 @@ app.get("/wordoftheday", async (req, res) => {
     res.json({ word: saved.word, meaning: saved.meaning, date: today });
     return;
   } catch (error) {
-    console.error("Word of the Day error:", error);
+    logger.error("Error fetching word of the day", error);
     res.status(500).json({ error: "Could not fetch word of the day" });
   }
 });

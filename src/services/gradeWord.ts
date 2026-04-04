@@ -7,6 +7,7 @@ import {
 import GradeWords from "../models/gradeWords";
 import { getOpenAIClient } from "./openaiClient";
 import { waitForImageFilename } from "./imagePolling";
+import { logger } from "../utils/logger";
 import { escapeRegex, normalizeWordList } from "../utils/text";
 
 export const generateImageForGrade = async (
@@ -15,36 +16,41 @@ export const generateImageForGrade = async (
   promptStyle: "meaning" | "exampleSentence" | "positivePrompt"
 ) => {
   try {
-    console.log("🔍 Starting image generation for grade:", grade, promptStyle);
-    console.log("📜 Received word list:", wordList);
+    logger.info("Starting grade image generation", {
+      grade,
+      promptStyle,
+      wordCount: wordList.length,
+    });
 
     const cleanedWords = normalizeWordList(wordList);
-
-    console.log("🧹 Cleaned word list:", cleanedWords);
+    logger.info("Prepared grade word list", {
+      grade,
+      wordCount: cleanedWords.length,
+    });
 
     let gradeEntry = await GradeWords.findOne({
       grade: new RegExp(`^${escapeRegex(grade)}$`, "i"),
     });
 
     if (!gradeEntry) {
-      console.warn(`⚠️ Grade "${grade}" not found. Creating new entry.`);
+      logger.warn("Grade entry not found, creating a new one", { grade });
       gradeEntry = new GradeWords({ grade: grade, words: [] });
     }
 
     const results = [];
 
     for (const term of cleanedWords) {
-      console.log("🔎 Processing term:", term);
+      logger.info("Processing grade term", { grade, term });
 
       const existingWord = gradeEntry.words.find(
         (w: any) => w.word.toLowerCase() === term
       );
 
       if (!existingWord) {
-        console.log(`🆕 Word "${term}" not found. Generating details...`);
+        logger.info("Generating new grade word details", { grade, term });
         const wordDetails = await getWordDetailsInContext(term, grade);
         if (!wordDetails) {
-          console.warn(`⚠️ No details found for "${term}"`);
+          logger.warn("No grade word details found", { grade, term });
           results.push({ term, error: "Word details could not be fetched." });
           continue;
         }
@@ -54,10 +60,11 @@ export const generateImageForGrade = async (
             ? wordDetails[promptStyle]
             : (wordDetails.positivePrompt ?? "")
         );
-        console.log(
-          `df Prompt ID received for new word "${term}":`,
-          wordDetails.meaning
-        );
+        logger.info("Generated prompt for new grade word", {
+          grade,
+          term,
+          promptId,
+        });
 
         const newWord = {
           ...wordDetails,
@@ -76,7 +83,7 @@ export const generateImageForGrade = async (
       }
 
       if (existingWord.imageURL) {
-        console.log(`🖼️ Skipping "${term}" — image already exists.`);
+        logger.info("Skipping grade term with existing image", { grade, term });
         results.push({
           term,
           result: { word: existingWord.word },
@@ -85,13 +92,17 @@ export const generateImageForGrade = async (
         continue;
       }
 
-      console.log(`📤 Sending prompt for "${term}"...`);
+      logger.info("Generating prompt for existing grade term", { grade, term });
       const promptId = await sendPromptAPI(
         promptStyle
           ? existingWord[promptStyle]
           : (existingWord.positivePrompt ?? "")
       );
-      console.log(`✅ Prompt ID received for "${term}":`, existingWord.meaning);
+      logger.info("Generated prompt for existing grade word", {
+        grade,
+        term,
+        promptId,
+      });
 
       existingWord.promptId = promptId;
 
@@ -102,17 +113,17 @@ export const generateImageForGrade = async (
       });
     }
 
-    console.log("💾 Saving updates to grade document...");
+    logger.info("Saving grade image generation results", { grade });
     await gradeEntry.save();
 
-    console.log("✅ Image generation for grade completed.");
+    logger.info("Completed grade image generation", { grade });
     return {
       success: true,
       grade,
       data: results,
     };
   } catch (error) {
-    console.error("❌ Error generating image for grade:", error);
+    logger.error("Error generating image for grade", error);
     throw error;
   }
 };
@@ -168,7 +179,7 @@ async function getWordDetailsInContext(word: string, context: string) {
     const data: WordDetails = JSON.parse(text);
     return data;
   } catch (err) {
-    console.error("Failed to parse JSON response:", err);
+    logger.error("Failed to parse grade word JSON response", err);
     return {
       word,
       partOfSpeech: "",
@@ -253,7 +264,7 @@ export const assignImageToGradeWord = async (
 
     return { grade, status: "done", results };
   } catch (error) {
-    console.error("❌ Error in assignImageToGradeWord:", error);
+    logger.error("Error assigning images to grade words", error);
     const wrappedError = new Error("Failed to assign images to grade words");
     (wrappedError as Error & { cause?: unknown }).cause = error;
     throw wrappedError;

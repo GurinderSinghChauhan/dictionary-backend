@@ -3,9 +3,11 @@ import express from "express";
 import multer from "multer";
 import words from "../models/words";
 import { requireAdmin } from "../middleware/auth";
+import { validateBody } from "../middleware/validate";
 import { defineManyWords, getImagesByWords } from "../services/admin/imageGen";
 import { logger } from "../utils/logger";
 import { parseUniqueWordsFromUpload } from "../utils/wordList";
+import { uploadWordsBodySchema } from "../validation/words";
 
 const router = express.Router();
 const storage = multer.memoryStorage();
@@ -176,6 +178,7 @@ router.post(
   "/upload-excel",
   requireAdmin,
   upload.single("file"),
+  validateBody(uploadWordsBodySchema),
   handleUploadExcel
 );
 
@@ -183,6 +186,7 @@ router.post(
   "/uploadExcel",
   requireAdmin,
   upload.single("file"),
+  validateBody(uploadWordsBodySchema),
   handleUploadExcel
 );
 
@@ -223,6 +227,7 @@ router.post(
   "/assign-image",
   requireAdmin,
   upload.single("file"),
+  validateBody(uploadWordsBodySchema),
   handleAssignImage
 );
 
@@ -263,6 +268,7 @@ router.post(
   "/delete-by-file",
   requireAdmin,
   upload.single("file"),
+  validateBody(uploadWordsBodySchema),
   handleDeleteByFile
 );
 

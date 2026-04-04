@@ -7,6 +7,7 @@ import {
 import { WordDetails } from "./wordServices";
 import { getOpenAIClient } from "./openaiClient";
 import { waitForImageFilename } from "./imagePolling";
+import { logger } from "../utils/logger";
 import { escapeRegex, normalizeWordList } from "../utils/text";
 
 export const generateImageForExam = async (
@@ -15,7 +16,7 @@ export const generateImageForExam = async (
   promptStyle: "meaning" | "exampleSentence" | "positivePrompt"
 ) => {
   try {
-    console.log("🔍 Starting image generation for exam:", exam);
+    logger.info("Starting exam image generation", { exam, promptStyle });
 
     const cleanedWords = normalizeWordList(wordList);
 
@@ -75,7 +76,7 @@ export const generateImageForExam = async (
     await examEntry.save();
     return { success: true, exam, data: results };
   } catch (err) {
-    console.error("❌ Error generating image for exam:", err);
+    logger.error("Error generating image for exam", err);
     throw err;
   }
 };
@@ -145,7 +146,7 @@ export const assignImageToExamWord = async (
 
     return { exam, status: "done", results };
   } catch (err) {
-    console.error("❌ Error in assignImageToExamWord:", err);
+    logger.error("Error assigning images to exam words", err);
     const error = new Error("Failed to assign images to exam words");
     (error as Error & { cause?: unknown }).cause = err;
     throw error;
@@ -188,7 +189,7 @@ async function getWordDetailsInContext(word: string, context: string) {
     );
     return data;
   } catch (err) {
-    console.error("❌ Failed to parse OpenAI response:", err);
+    logger.error("Failed to parse exam word JSON response", err);
     return null;
   }
 }

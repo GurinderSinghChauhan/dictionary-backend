@@ -1,11 +1,9 @@
 import axios from "axios";
 import PromptJSON from "../mock/prompt.json";
 import AWS from "aws-sdk";
-import dotenv from "dotenv";
+import { logger } from "../utils/logger";
 
 const defaultComfyUrl = "http://127.0.0.1:8188";
-
-dotenv.config();
 
 const getComfyUrl = () => {
   const configuredUrl = process.env.COMFYUI_BASE_URL?.trim();
@@ -56,10 +54,7 @@ export async function sendPromptAPI(positive: string) {
     );
     return response.data.prompt_id;
   } catch (error: any) {
-    console.error(
-      "Error sending prompt:",
-      error.response?.data || error.message
-    );
+    logger.error("Error sending prompt", error.response?.data || error.message);
     return null;
   }
 }
@@ -72,7 +67,7 @@ export async function getPromptHistory(promptId: string) {
     //console.log("Prompt history response:", response.data);
     return response.data;
   } catch (error) {
-    console.error("Error fetching prompt history:", error);
+    logger.error("Error fetching prompt history", error);
     return null;
   }
 }

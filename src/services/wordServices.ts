@@ -1,4 +1,5 @@
 import { getOpenAIClient } from "./openaiClient";
+import { logger } from "../utils/logger";
 
 export interface WordDetails {
   word: string;
@@ -52,7 +53,7 @@ export async function getWordDetails(word: string): Promise<WordDetails> {
     const data: WordDetails = JSON.parse(text);
     return data;
   } catch (err) {
-    console.error("Failed to parse JSON response:", err);
+    logger.error("Failed to parse word details JSON response", err);
     // Return fallback with some defaults, or throw error as needed
     return {
       word,

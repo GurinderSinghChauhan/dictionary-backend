@@ -8,6 +8,7 @@ import {
 } from "./generateImageWithComfyUI";
 import { getOpenAIClient } from "./openaiClient";
 import { waitForImageFilename } from "./imagePolling";
+import { logger } from "../utils/logger";
 import { escapeRegex, normalizeWordList } from "../utils/text";
 
 const getSubjectContext = (subject: string) => {
@@ -34,7 +35,7 @@ export const addSubjectWords = async (subject: string, words: unknown[]) => {
       { new: true, upsert: true }
     );
   } catch (err) {
-    console.error("❌ Error adding subject words:", err);
+    logger.error("Error adding subject words", err);
     throw err;
   }
 };
@@ -113,7 +114,7 @@ export const uploadSubjectWords = async (
       skippedWords,
     };
   } catch (err) {
-    console.error("❌ Error in uploadSubjectWords:", err);
+    logger.error("Error uploading subject words", err);
     throw err;
   }
 };
@@ -124,16 +125,17 @@ export const generateImageForSubject = async (
   promptStyle: "meaning" | "exampleSentence" | "positivePrompt"
 ) => {
   try {
-    console.log(
-      "🔍 Starting image generation for subject:",
+    logger.info("Starting subject image generation", {
       subject,
-      promptStyle
-    );
-    console.log("📜 Received word list:", wordList);
+      promptStyle,
+      wordCount: wordList.length,
+    });
 
     const cleanedWords = normalizeWordList(wordList);
-
-    console.log("🧹 Cleaned word list:", cleanedWords);
+    logger.info("Prepared subject word list", {
+      subject,
+      wordCount: cleanedWords.length,
+    });
 
     // 🔎 Check if subject exists; if not, create it
     let subjectEntry = await SubjectWords.findOne({
@@ -141,28 +143,28 @@ export const generateImageForSubject = async (
     });
 
     if (!subjectEntry) {
-      console.warn(`⚠️ Subject "${subject}" not found. Creating new entry.`);
+      logger.warn("Subject entry not found, creating a new one", { subject });
       subjectEntry = await SubjectWords.create({ subject, words: [] });
     }
 
     const results = [];
 
     for (const term of cleanedWords) {
-      console.log("🔎 Processing term:", term);
+      logger.info("Processing subject term", { subject, term });
 
       const existingWord = subjectEntry.words.find(
         (w: any) => w.word.toLowerCase() === term
       );
 
       if (!existingWord) {
-        console.log(`🆕 Generating details for "${term}"...`);
+        logger.info("Generating new subject word details", { subject, term });
 
         const wordDetails = await getWordDetailsInContext(
           term,
           getSubjectContext(subject)
         );
         if (!wordDetails) {
-          console.warn(`⚠️ No details found for "${term}"`);
+          logger.warn("No subject word details found", { subject, term });
           results.push({ term, error: "Word details could not be fetched." });
           continue;
         }
@@ -170,7 +172,11 @@ export const generateImageForSubject = async (
         const promptId = await sendPromptAPI(
           promptStyle ? wordDetails[promptStyle] : (wordDetails.meaning ?? "")
         );
-        console.log(`✅ Prompt ID for "${term}":`, promptId);
+        logger.info("Generated prompt for new subject word", {
+          subject,
+          term,
+          promptId,
+        });
 
         const newWord = {
           ...wordDetails,
@@ -189,7 +195,10 @@ export const generateImageForSubject = async (
       }
 
       if (existingWord.imageURL) {
-        console.log(`🖼️ "${term}" already has an image. Skipping.`);
+        logger.info("Skipping subject term with existing image", {
+          subject,
+          term,
+        });
         results.push({
           term,
           result: { word: existingWord.word },
@@ -198,13 +207,20 @@ export const generateImageForSubject = async (
         continue;
       }
 
-      console.log(`📤 Sending prompt for "${term}"...`);
+      logger.info("Generating prompt for existing subject term", {
+        subject,
+        term,
+      });
       const promptId = await sendPromptAPI(
         (existingWord[
           (promptStyle as keyof WordDetails) ?? "meaning"
         ] as string) || ""
       );
-      console.log(`✅ Prompt ID for "${term}":`, promptId);
+      logger.info("Generated prompt for existing subject word", {
+        subject,
+        term,
+        promptId,
+      });
 
       existingWord.promptId = promptId;
 
@@ -216,17 +232,17 @@ export const generateImageForSubject = async (
     }
 
     // 💾 Save changes
-    console.log("💾 Saving updated subject...");
+    logger.info("Saving subject image generation results", { subject });
     await subjectEntry.save();
 
-    console.log("✅ Finished image generation for subject.");
+    logger.info("Completed subject image generation", { subject });
     return {
       success: true,
       subject,
       data: results,
     };
   } catch (error) {
-    console.error("❌ Error in generateImageForSubject:", error);
+    logger.error("Error generating image for subject", error);
     throw error;
   }
 };
@@ -298,7 +314,7 @@ export const assignImageToSubjectWord = async (
 
     return { subject, status: "done", results };
   } catch (error) {
-    console.error("❌ Error in assignImageToSubjectWord:", error);
+    logger.error("Error assigning images to subject words", error);
     const wrappedError = new Error("Failed to assign images to subject words");
     (wrappedError as Error & { cause?: unknown }).cause = error;
     throw wrappedError;
@@ -354,7 +370,7 @@ async function getWordDetailsInContext(word: string, subject: string) {
     const data: WordDetails = JSON.parse(text);
     return data;
   } catch (err) {
-    console.error("Failed to parse JSON response:", err);
+    logger.error("Failed to parse subject word JSON response", err);
     // Return fallback with some defaults, or throw error as needed
     return {
       word,

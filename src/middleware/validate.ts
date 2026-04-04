@@ -38,3 +38,19 @@ export const validateQuery =
     req.query = result.data as Request["query"];
     next();
   };
+
+export const validateParams =
+  <T extends ZodTypeAny>(schema: T) =>
+  (req: Request, res: Response, next: NextFunction) => {
+    const result = schema.safeParse(req.params);
+    if (!result.success) {
+      res.status(400).json({
+        error: "Invalid route parameters",
+        details: formatZodError(result.error),
+      });
+      return;
+    }
+
+    req.params = result.data as Request["params"];
+    next();
+  };

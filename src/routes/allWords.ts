@@ -8,7 +8,13 @@ import { requireAdmin } from "../middleware/auth";
 import { validateBody, validateQuery } from "../middleware/validate";
 import { logger } from "../utils/logger";
 import { parseUniqueWordsFromDiskFile } from "../utils/wordList";
-import { addWordsSchema, allWordsQuerySchema } from "../validation/words";
+import {
+  addWordsSchema,
+  allWordsQuerySchema,
+  deleteWordQuerySchema,
+  getImagesByWordsSchema,
+  uploadWordsBodySchema,
+} from "../validation/words";
 
 const router = express.Router();
 
@@ -100,21 +106,22 @@ router.get("/", validateQuery(allWordsQuerySchema), async (req, res) => {
  *       500:
  *         description: Server error
  */
-router.delete("/", requireAdmin, async (req, res) => {
-  try {
-    const word = req.query.word as string;
-    if (!word) {
-      res.status(400).json({ error: "Missing 'word' param" });
-      return;
-    }
+router.delete(
+  "/",
+  requireAdmin,
+  validateQuery(deleteWordQuerySchema),
+  async (req, res) => {
+    try {
+      const word = String(req.query.word);
 
-    const success = await deleteWord(word);
-    res.json({ success });
-  } catch (err) {
-    logger.error("Error deleting word", err);
-    res.status(500).json({ error: "Internal server error" });
+      const success = await deleteWord(word);
+      res.json({ success });
+    } catch (err) {
+      logger.error("Error deleting word", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
   }
-});
+);
 
 const upload = multer({ dest: "/tmp/uploads/" });
 
@@ -167,6 +174,7 @@ router.post(
   "/upload",
   requireAdmin,
   upload.single("file"),
+  validateBody(uploadWordsBodySchema),
   async (req, res) => {
     const file = req.file;
     const promptStyle = req.body.promptStyle || "positivePrompt";
@@ -254,22 +262,19 @@ router.post(
  *       500:
  *         description: Server error
  */
-router.post("/getImagesByWords", requireAdmin, async (req, res) => {
-  try {
-    const words = Array.isArray(req.body?.words) ? req.body.words : [];
-    if (!words.length) {
-      res
-        .status(400)
-        .json({ error: "Body must include non-empty words array" });
-      return;
+router.post(
+  "/getImagesByWords",
+  requireAdmin,
+  validateBody(getImagesByWordsSchema),
+  async (req, res) => {
+    try {
+      const result = await getImagesByWords(req.body.words);
+      res.status(200).json({ success: true, data: result });
+    } catch (err) {
+      logger.error("Error in /getImagesByWords", err);
+      res.status(500).json({ error: "Internal server error" });
     }
-
-    const result = await getImagesByWords(words);
-    res.status(200).json({ success: true, data: result });
-  } catch (err) {
-    logger.error("Error in /getImagesByWords", err);
-    res.status(500).json({ error: "Internal server error" });
   }
-});
+);
 
 export default router;

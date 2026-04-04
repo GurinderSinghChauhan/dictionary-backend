@@ -1,5 +1,6 @@
 import express from "express";
 import words from "../models/words";
+import { logger } from "../utils/logger";
 
 const router = express.Router();
 
@@ -51,7 +52,7 @@ router.get("/:term", async (req, res) => {
 
     res.json(existing);
   } catch (err) {
-    console.error("Error saving word:", err);
+    logger.error("Error fetching word", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });

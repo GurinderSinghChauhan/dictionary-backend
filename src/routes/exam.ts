@@ -9,8 +9,15 @@ import {
 } from "../services/examWord";
 import ExamWords from "../models/examWords";
 import { requireAdmin } from "../middleware/auth";
+import { validateBody, validateQuery } from "../middleware/validate";
+import { logger } from "../utils/logger";
 import { parseUniqueWordsFromDiskFile } from "../utils/wordList";
 import { escapeRegex, getPositiveInteger } from "../utils/text";
+import {
+  categorizedWordsQuerySchema,
+  examAssignBodySchema,
+  examUploadBodySchema,
+} from "../validation/words";
 
 const upload = multer({ dest: "/tmp/uploads/" });
 const router = express.Router();
@@ -24,36 +31,41 @@ const cleanupUploadedFile = (file?: Express.Multer.File) => {
   }
 };
 
-router.get("/", async (req, res) => {
-  try {
-    const exam = String(req.query.exam || "");
-    const page = getPositiveInteger(req.query.page, 1);
-    const limit = getPositiveInteger(req.query.limit, 10);
+router.get(
+  "/",
+  validateQuery(categorizedWordsQuerySchema),
+  async (req, res) => {
+    try {
+      const exam = String(req.query.exam || "");
+      const page = getPositiveInteger(req.query.page, 1);
+      const limit = getPositiveInteger(req.query.limit, 10);
 
-    if (!exam) {
-      res.status(400).json({ success: false, error: "Exam is required." });
+      if (!exam) {
+        res.status(400).json({ success: false, error: "Exam is required." });
+        return;
+      }
+
+      const data = await getExamWords(exam, page, limit);
+
+      res.status(200).json({ success: true, ...data });
+      return;
+    } catch (err: any) {
+      logger.error("Error fetching exam words", err);
+      const status = err.message.includes("not found") ? 404 : 500;
+      res.status(status).json({
+        success: false,
+        error: err.message || "Server error.",
+      });
       return;
     }
-
-    const data = await getExamWords(exam, page, limit);
-
-    res.status(200).json({ success: true, ...data });
-    return;
-  } catch (err: any) {
-    console.error("❌ API error:", err.message);
-    const status = err.message.includes("not found") ? 404 : 500;
-    res.status(status).json({
-      success: false,
-      error: err.message || "Server error.",
-    });
-    return;
   }
-});
+);
 
 router.post(
   "/upload",
   requireAdmin,
   upload.single("file"),
+  validateBody(examUploadBodySchema),
   async (req, res) => {
     const { exam } = req.body;
     const file = req.file;
@@ -71,7 +83,7 @@ router.post(
 
       if (!examEntry) {
         examEntry = await ExamWords.create({ exam, words: [] });
-        console.log(`🆕 Exam "${exam}" created.`);
+        logger.info("Created exam entry", { exam });
       }
 
       const wordList = parseUniqueWordsFromDiskFile(file.path);
@@ -89,7 +101,7 @@ router.post(
 
       res.status(200).json({ success: true, data: generationData });
     } catch (err) {
-      console.error("❌ Error uploading exam words:", err);
+      logger.error("Error uploading exam words", err);
       res.status(500).json({ error: "Server error." });
     } finally {
       cleanupUploadedFile(file);
@@ -101,6 +113,7 @@ router.post(
   "/assign",
   requireAdmin,
   upload.single("file"),
+  validateBody(examAssignBodySchema),
   async (req, res) => {
     const { exam } = req.body;
     const file = req.file;
@@ -121,7 +134,7 @@ router.post(
 
       res.status(200).json({ success: true, data });
     } catch (err) {
-      console.error("❌ Error assigning images for exam words:", err);
+      logger.error("Error assigning exam word images", err);
       res.status(500).json({ error: "Server error." });
     } finally {
       cleanupUploadedFile(file);
