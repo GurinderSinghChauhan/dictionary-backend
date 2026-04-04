@@ -45,7 +45,8 @@ const s3 = new AWS.S3();
 
 export async function sendPromptAPI(positive: string) {
   // PromptJSON
-  PromptJSON.prompt["6"].inputs.text = `${positive} realistic, high quality, detailed, sharp focus, vibrant colors, cinematic lighting, professional photography, clear resolution, masterpiece, hyper-realistic, `;
+  PromptJSON.prompt["6"].inputs.text =
+    `${positive} realistic, high quality, detailed, sharp focus, vibrant colors, cinematic lighting, professional photography, clear resolution, masterpiece, hyper-realistic, `;
   PromptJSON.prompt["7"].inputs.text =
     "blurry, cartoon, painting, illustration, low resolution, deformed body, extra limbs, bad anatomy, distorted face, unrealistic proportions, CGI, watermark, nudity, artifacts, oversaturated, duplicate limbs, fused fingers";
   try {

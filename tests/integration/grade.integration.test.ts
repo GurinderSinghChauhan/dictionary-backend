@@ -1,5 +1,5 @@
 import request from "supertest";
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect } from "vitest";
 import app from "../../src/app";
 
 describe("Grade endpoint integration tests", () => {
@@ -20,30 +20,38 @@ describe("Grade endpoint integration tests", () => {
       expect(response.body.error).toContain("Grade is required");
     });
 
-    it("should have pagination parameters with defaults", { skip: true }, async () => {
-      const response = await request(app).get("/grade?grade=1");
+    it(
+      "should have pagination parameters with defaults",
+      { skip: true },
+      async () => {
+        const response = await request(app).get("/grade?grade=1");
 
-      if (response.status === 200) {
-        expect(response.body.success).toBe(true);
-        expect(response.body).toHaveProperty("words");
-        expect(response.body).toHaveProperty("page");
-        expect(response.body).toHaveProperty("limit");
-      } else if ([404, 500].includes(response.status)) {
-        expect([404, 500]).toContain(response.status);
+        if (response.status === 200) {
+          expect(response.body.success).toBe(true);
+          expect(response.body).toHaveProperty("words");
+          expect(response.body).toHaveProperty("page");
+          expect(response.body).toHaveProperty("limit");
+        } else if ([404, 500].includes(response.status)) {
+          expect([404, 500]).toContain(response.status);
+        }
       }
-    });
+    );
 
-    it("should respect page and limit query parameters", { skip: true }, async () => {
-      const response = await request(app).get(
-        "/grade?grade=1&page=2&limit=20"
-      );
+    it(
+      "should respect page and limit query parameters",
+      { skip: true },
+      async () => {
+        const response = await request(app).get(
+          "/grade?grade=1&page=2&limit=20"
+        );
 
-      expect([200, 404, 500]).toContain(response.status);
-      if (response.status === 200) {
-        expect(response.body.page).toBeDefined();
-        expect(response.body.limit).toBeDefined();
+        expect([200, 404, 500]).toContain(response.status);
+        if (response.status === 200) {
+          expect(response.body.page).toBeDefined();
+          expect(response.body.limit).toBeDefined();
+        }
       }
-    });
+    );
   });
 
   describe("POST /grade/upload endpoint", () => {

@@ -67,7 +67,10 @@ describe("Word parsing utilities - edge cases", () => {
   describe("File type validation", () => {
     it("should validate MIME types", () => {
       const isSupportedMimeType = (mime: string) =>
-        ["text/plain", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"].includes(mime);
+        [
+          "text/plain",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ].includes(mime);
 
       expect(isSupportedMimeType("text/plain")).toBe(true);
       expect(
@@ -110,7 +113,10 @@ describe("Word parsing utilities - edge cases", () => {
 
     it("should strip punctuation at word boundaries", () => {
       const cleanWord = (word: string) =>
-        word.trim().replace(/^[^\w-]+|[^\w-']+$/g, "").toLowerCase();
+        word
+          .trim()
+          .replace(/^[^\w-]+|[^\w-']+$/g, "")
+          .toLowerCase();
 
       expect(cleanWord("(word)")).toBe("word");
       expect(cleanWord("!hello?")).toBe("hello");

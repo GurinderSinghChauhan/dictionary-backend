@@ -30,7 +30,7 @@ export const generateImageForExam = async (
     const results = [];
 
     for (const term of cleanedWords) {
-      let existingWord = examEntry.words.find(
+      const existingWord = examEntry.words.find(
         (w: any) => w.word.toLowerCase() === term
       );
 
@@ -146,7 +146,9 @@ export const assignImageToExamWord = async (
     return { exam, status: "done", results };
   } catch (err) {
     console.error("❌ Error in assignImageToExamWord:", err);
-    throw new Error("Failed to assign images to exam words");
+    const error = new Error("Failed to assign images to exam words");
+    (error as Error & { cause?: unknown }).cause = err;
+    throw error;
   }
 };
 

@@ -44,7 +44,10 @@ export const parseUniqueWordsFromUpload = (file: {
     const data = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], {
       header: 1,
     });
-    const flatWords = data.flat().filter(Boolean).map((w) => String(w));
+    const flatWords = data
+      .flat()
+      .filter(Boolean)
+      .map((w) => String(w));
     return normalizeAndUnique(flatWords);
   }
 

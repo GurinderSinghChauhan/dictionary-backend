@@ -88,7 +88,11 @@ router.post(
       }
 
       // Call uploadSubjectWords with subject and list of words
-      const data = await generateImageForSubject(subject, wordList, promptStyle);
+      const data = await generateImageForSubject(
+        subject,
+        wordList,
+        promptStyle
+      );
       await assignImageToSubjectWord(subject, wordList);
 
       res.status(200).json({ success: true, data });

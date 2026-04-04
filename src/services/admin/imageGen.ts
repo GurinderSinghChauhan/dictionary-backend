@@ -21,7 +21,7 @@ export const defineManyWords = async (
   for (const termRaw of wordArray) {
     const term = normalizeWord(termRaw);
 
-    let existing = await words.findOne({ word: term });
+    const existing = await words.findOne({ word: term });
 
     if (existing) {
       if (existing.imageURL) {

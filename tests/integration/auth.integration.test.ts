@@ -13,28 +13,28 @@ describe("Auth endpoint integration tests", () => {
     });
 
     it("should validate email format", { skip: true }, async () => {
-      const response = await request(app)
-        .post("/auth/register")
-        .send({
-          email: "invalid-email",
-          username: "testuser",
-          password: "Password123",
-        });
+      const response = await request(app).post("/auth/register").send({
+        email: "invalid-email",
+        username: "testuser",
+        password: "Password123",
+      });
 
       expect([400, 404, 422]).toContain(response.status);
     });
 
-    it("should require password to meet security criteria", { skip: true }, async () => {
-      const response = await request(app)
-        .post("/auth/register")
-        .send({
+    it(
+      "should require password to meet security criteria",
+      { skip: true },
+      async () => {
+        const response = await request(app).post("/auth/register").send({
           email: "test@example.com",
           username: "testuser",
           password: "weak",
         });
 
-      expect([400, 404, 422, 200]).toContain(response.status);
-    });
+        expect([400, 404, 422, 200]).toContain(response.status);
+      }
+    );
   });
 
   describe("POST /auth/login endpoint", () => {
@@ -46,23 +46,23 @@ describe("Auth endpoint integration tests", () => {
       expect([400, 404]).toContain(response.status);
     });
 
-    it("should return error for non-existent user", { skip: true }, async () => {
-      const response = await request(app)
-        .post("/auth/login")
-        .send({
+    it(
+      "should return error for non-existent user",
+      { skip: true },
+      async () => {
+        const response = await request(app).post("/auth/login").send({
           email: "nonexistent@example.com",
           password: "AnyPassword123",
         });
 
-      expect([401, 404]).toContain(response.status);
-    });
+        expect([401, 404]).toContain(response.status);
+      }
+    );
   });
 
   describe("POST /auth/google endpoint", () => {
     it("should require idToken", async () => {
-      const response = await request(app)
-        .post("/auth/google")
-        .send({});
+      const response = await request(app).post("/auth/google").send({});
 
       expect([400, 404]).toContain(response.status);
     });

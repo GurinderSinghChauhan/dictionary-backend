@@ -5,9 +5,7 @@ import app from "../../src/app";
 describe("Upload Excel endpoint integration tests", () => {
   describe("POST /api/uploadExcel", () => {
     it("should return 400 when file is not attached", async () => {
-      const response = await request(app)
-        .post("/api/uploadExcel")
-        .send({});
+      const response = await request(app).post("/api/uploadExcel").send({});
 
       expect([400, 401, 403, 404]).toContain(response.status);
     });

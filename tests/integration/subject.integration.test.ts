@@ -33,17 +33,21 @@ describe("Subject endpoint integration tests", () => {
       }
     });
 
-    it("should accept custom pagination parameters", { skip: true }, async () => {
-      const response = await request(app).get(
-        "/subject?subject=science&page=1&limit=30"
-      );
+    it(
+      "should accept custom pagination parameters",
+      { skip: true },
+      async () => {
+        const response = await request(app).get(
+          "/subject?subject=science&page=1&limit=30"
+        );
 
-      expect([200, 404, 500]).toContain(response.status);
-      if (response.status === 200) {
-        expect(response.body).toHaveProperty("page");
-        expect(response.body).toHaveProperty("limit");
+        expect([200, 404, 500]).toContain(response.status);
+        if (response.status === 200) {
+          expect(response.body).toHaveProperty("page");
+          expect(response.body).toHaveProperty("limit");
+        }
       }
-    });
+    );
   });
 
   describe("POST /subject/upload endpoint", () => {
@@ -77,9 +81,7 @@ describe("Subject endpoint integration tests", () => {
 
   describe("POST /subject/assign endpoint", () => {
     it("should return error when subject is missing", async () => {
-      const response = await request(app)
-        .post("/subject/assign")
-        .send({});
+      const response = await request(app).post("/subject/assign").send({});
 
       expect([400, 401, 403]).toContain(response.status);
     });

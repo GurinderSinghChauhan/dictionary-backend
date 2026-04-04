@@ -124,7 +124,11 @@ export const generateImageForSubject = async (
   promptStyle: "meaning" | "exampleSentence" | "positivePrompt"
 ) => {
   try {
-    console.log("🔍 Starting image generation for subject:", subject, promptStyle);
+    console.log(
+      "🔍 Starting image generation for subject:",
+      subject,
+      promptStyle
+    );
     console.log("📜 Received word list:", wordList);
 
     const cleanedWords = normalizeWordList(wordList);
@@ -146,7 +150,7 @@ export const generateImageForSubject = async (
     for (const term of cleanedWords) {
       console.log("🔎 Processing term:", term);
 
-      let existingWord = subjectEntry.words.find(
+      const existingWord = subjectEntry.words.find(
         (w: any) => w.word.toLowerCase() === term
       );
 
@@ -164,7 +168,7 @@ export const generateImageForSubject = async (
         }
 
         const promptId = await sendPromptAPI(
-          promptStyle ? wordDetails[promptStyle] : wordDetails.meaning ?? ""
+          promptStyle ? wordDetails[promptStyle] : (wordDetails.meaning ?? "")
         );
         console.log(`✅ Prompt ID for "${term}":`, promptId);
 
@@ -295,7 +299,9 @@ export const assignImageToSubjectWord = async (
     return { subject, status: "done", results };
   } catch (error) {
     console.error("❌ Error in assignImageToSubjectWord:", error);
-    throw new Error("Failed to assign images to subject words");
+    const wrappedError = new Error("Failed to assign images to subject words");
+    (wrappedError as Error & { cause?: unknown }).cause = error;
+    throw wrappedError;
   }
 };
 

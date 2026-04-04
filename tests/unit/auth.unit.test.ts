@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import bcrypt from "bcryptjs";
+import jwt from "jsonwebtoken";
 
 describe("Auth utilities", () => {
   describe("bcrypt password hashing", () => {
@@ -31,7 +32,6 @@ describe("Auth utilities", () => {
 
   describe("JWT token generation", () => {
     it("should generate a token with correct payload structure", () => {
-      const jwt = require("jsonwebtoken");
       const secret = "test-secret-key";
       const payload = { id: "user123", isAdmin: false };
 
@@ -47,7 +47,6 @@ describe("Auth utilities", () => {
     });
 
     it("should verify a valid token", () => {
-      const jwt = require("jsonwebtoken");
       const secret = "test-secret-key";
       const payload = { id: "user123", isAdmin: true };
 
@@ -60,7 +59,6 @@ describe("Auth utilities", () => {
     });
 
     it("should fail verification with wrong secret", () => {
-      const jwt = require("jsonwebtoken");
       const secret = "test-secret-key";
       const wrongSecret = "wrong-secret-key";
       const payload = { id: "user123", isAdmin: false };

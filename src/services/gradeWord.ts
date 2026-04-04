@@ -36,7 +36,7 @@ export const generateImageForGrade = async (
     for (const term of cleanedWords) {
       console.log("🔎 Processing term:", term);
 
-      let existingWord = gradeEntry.words.find(
+      const existingWord = gradeEntry.words.find(
         (w: any) => w.word.toLowerCase() === term
       );
 
@@ -52,7 +52,7 @@ export const generateImageForGrade = async (
         const promptId = await sendPromptAPI(
           promptStyle
             ? wordDetails[promptStyle]
-            : wordDetails.positivePrompt ?? ""
+            : (wordDetails.positivePrompt ?? "")
         );
         console.log(
           `df Prompt ID received for new word "${term}":`,
@@ -89,7 +89,7 @@ export const generateImageForGrade = async (
       const promptId = await sendPromptAPI(
         promptStyle
           ? existingWord[promptStyle]
-          : existingWord.positivePrompt ?? ""
+          : (existingWord.positivePrompt ?? "")
       );
       console.log(`✅ Prompt ID received for "${term}":`, existingWord.meaning);
 
@@ -254,7 +254,9 @@ export const assignImageToGradeWord = async (
     return { grade, status: "done", results };
   } catch (error) {
     console.error("❌ Error in assignImageToGradeWord:", error);
-    throw new Error("Failed to assign images to grade words");
+    const wrappedError = new Error("Failed to assign images to grade words");
+    (wrappedError as Error & { cause?: unknown }).cause = error;
+    throw wrappedError;
   }
 };
 

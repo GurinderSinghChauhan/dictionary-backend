@@ -2,8 +2,18 @@ import express, { Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import { OAuth2Client } from "google-auth-library";
 import jwt from "jsonwebtoken";
-import { authenticateToken, type AuthenticatedRequest } from "../middleware/auth";
+import {
+  authenticateToken,
+  type AuthenticatedRequest,
+} from "../middleware/auth";
+import { validateBody } from "../middleware/validate";
 import User from "../models/user";
+import { logger } from "../utils/logger";
+import {
+  googleLoginSchema,
+  loginSchema,
+  registerSchema,
+} from "../validation/auth";
 
 const router = express.Router();
 
@@ -98,20 +108,11 @@ const buildUniqueUsername = async (baseName: string) => {
  *         description: User already exists
  */
 // Register Route
-router.post("/register", async (req, res) => {
+router.post("/register", validateBody(registerSchema), async (req, res) => {
   try {
-    const username = String(req.body?.username || "").trim();
-    const email = String(req.body?.email || "")
-      .trim()
-      .toLowerCase();
-    const password = String(req.body?.password || "");
-
-    if (!username || !email || !password) {
-      res.status(400).json({
-        message: "All fields are required: username, email, and password",
-      });
-      return;
-    }
+    const username = req.body.username.trim();
+    const email = req.body.email.trim().toLowerCase();
+    const password = req.body.password;
 
     const [existingEmail, existingUsername] = await Promise.all([
       User.findOne({ email }).lean(),
@@ -145,7 +146,7 @@ router.post("/register", async (req, res) => {
       user: serializeUser(user),
     });
   } catch (err: any) {
-    console.error("Registration Error:", err);
+    logger.error("Registration Error", err);
     res.status(500).json({
       message:
         "Something went wrong during registration. Please try again later.",
@@ -185,58 +186,54 @@ router.post("/register", async (req, res) => {
  *         description: User not found
  */
 // Login Route
-router.post("/login", async (req: Request, res: Response) => {
-  try {
-    const identifier = String(
-      req.body?.identifier || req.body?.email || req.body?.username || ""
-    )
-      .trim()
-      .toLowerCase();
-    const password = String(req.body?.password || "");
+router.post(
+  "/login",
+  validateBody(loginSchema),
+  async (req: Request, res: Response) => {
+    try {
+      const identifier = String(
+        req.body?.identifier || req.body?.email || req.body?.username || ""
+      )
+        .trim()
+        .toLowerCase();
+      const password = String(req.body?.password || "");
 
-    if (!identifier || !password) {
-      res
-        .status(400)
-        .json({ message: "Email/Username and password are required" });
-      return;
-    }
+      const user = await User.findOne({
+        $or: [{ email: identifier }, { username: identifier }],
+      });
 
-    // Find user by email or username
-    const user = await User.findOne({
-      $or: [{ email: identifier }, { username: identifier }],
-    });
+      if (!user) {
+        res.status(404).json({ message: "User not found" });
+        return;
+      }
 
-    if (!user) {
-      res.status(404).json({ message: "User not found" });
-      return;
-    }
+      if (!user.password) {
+        res.status(400).json({
+          message:
+            "This account uses Google login. Please sign in with Google.",
+        });
+        return;
+      }
 
-    if (!user.password) {
-      res.status(400).json({
-        message:
-          "This account uses Google login. Please sign in with Google.",
+      const isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch) {
+        res.status(401).json({ message: "Invalid credentials" });
+        return;
+      }
+
+      const token = signToken(user);
+
+      res.status(200).json({
+        token,
+        user: serializeUser(user),
       });
       return;
+    } catch (err: any) {
+      logger.error("Login Error", err);
+      res.status(500).json({ message: "Server error", error: err.message });
     }
-
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      res.status(401).json({ message: "Invalid credentials" });
-      return;
-    }
-
-    const token = signToken(user);
-
-    res.status(200).json({
-      token,
-      user: serializeUser(user),
-    });
-    return;
-  } catch (err: any) {
-    console.error("Login Error:", err);
-    res.status(500).json({ message: "Server error", error: err.message });
   }
-});
+);
 
 /**
  * @swagger
@@ -264,64 +261,64 @@ router.post("/login", async (req: Request, res: Response) => {
  *       401:
  *         description: Google authentication failed
  */
-router.post("/google", async (req: Request, res: Response) => {
-  try {
-    const idToken = String(req.body?.idToken || "").trim();
-    if (!idToken) {
-      res.status(400).json({ message: "Google ID token is required" });
-      return;
-    }
+router.post(
+  "/google",
+  validateBody(googleLoginSchema),
+  async (req: Request, res: Response) => {
+    try {
+      const idToken = req.body.idToken;
 
-    const audiences = getGoogleAudiences();
-    if (!audiences.length) {
-      res.status(500).json({
-        message: "Google login is not configured on the server",
+      const audiences = getGoogleAudiences();
+      if (!audiences.length) {
+        res.status(500).json({
+          message: "Google login is not configured on the server",
+        });
+        return;
+      }
+
+      const ticket = await googleClient.verifyIdToken({
+        idToken,
+        audience: audiences,
       });
-      return;
-    }
+      const payload = ticket.getPayload();
 
-    const ticket = await googleClient.verifyIdToken({
-      idToken,
-      audience: audiences,
-    });
-    const payload = ticket.getPayload();
+      if (!payload?.email) {
+        res.status(400).json({ message: "Google account email is missing" });
+        return;
+      }
 
-    if (!payload?.email) {
-      res.status(400).json({ message: "Google account email is missing" });
-      return;
-    }
+      const email = payload.email.trim().toLowerCase();
+      let user = await User.findOne({ email });
 
-    const email = payload.email.trim().toLowerCase();
-    let user = await User.findOne({ email });
+      if (!user) {
+        const username = await buildUniqueUsername(payload.name || email);
+        user = await User.create({
+          username,
+          email,
+          password: "",
+          isAdmin: false,
+          authProvider: "google",
+        });
+      } else if (user.authProvider !== "google") {
+        user.authProvider = "google";
+        await user.save();
+      }
 
-    if (!user) {
-      const username = await buildUniqueUsername(payload.name || email);
-      user = await User.create({
-        username,
-        email,
-        password: "",
-        isAdmin: false,
-        authProvider: "google",
+      const token = signToken(user);
+
+      res.status(200).json({
+        token,
+        user: serializeUser(user),
       });
-    } else if (user.authProvider !== "google") {
-      user.authProvider = "google";
-      await user.save();
+    } catch (err: any) {
+      logger.error("Google Login Error", err);
+      res.status(401).json({
+        message: "Google authentication failed",
+        error: err.message,
+      });
     }
-
-    const token = signToken(user);
-
-    res.status(200).json({
-      token,
-      user: serializeUser(user),
-    });
-  } catch (err: any) {
-    console.error("Google Login Error:", err);
-    res.status(401).json({
-      message: "Google authentication failed",
-      error: err.message,
-    });
   }
-});
+);
 
 /**
  * @swagger

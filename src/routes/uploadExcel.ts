@@ -4,13 +4,17 @@ import multer from "multer";
 import words from "../models/words";
 import { requireAdmin } from "../middleware/auth";
 import { defineManyWords, getImagesByWords } from "../services/admin/imageGen";
+import { logger } from "../utils/logger";
 import { parseUniqueWordsFromUpload } from "../utils/wordList";
 
 const router = express.Router();
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-const handleUploadExcel = async (req: express.Request, res: express.Response) => {
+const handleUploadExcel = async (
+  req: express.Request,
+  res: express.Response
+) => {
   try {
     const file = req.file;
 
@@ -41,14 +45,17 @@ const handleUploadExcel = async (req: express.Request, res: express.Response) =>
 
     res.json({ success: true, data: generationData });
   } catch (error: any) {
-    console.error("File Upload Error:", error?.response?.data || error.message);
-    res
-      .status(500)
-      .json({ error: error?.response?.data || error.message || "Failed to process file" });
+    logger.error("File Upload Error", error?.response?.data || error.message);
+    res.status(500).json({
+      error: error?.response?.data || error.message || "Failed to process file",
+    });
   }
 };
 
-const handleAssignImage = async (req: express.Request, res: express.Response) => {
+const handleAssignImage = async (
+  req: express.Request,
+  res: express.Response
+) => {
   try {
     const file = req.file;
 
@@ -74,14 +81,17 @@ const handleAssignImage = async (req: express.Request, res: express.Response) =>
 
     res.json({ success: true, data: assignmentData });
   } catch (error: any) {
-    console.error("File Upload Error:", error?.response?.data || error.message);
-    res
-      .status(500)
-      .json({ error: error?.response?.data || error.message || "Failed to process file" });
+    logger.error("File Upload Error", error?.response?.data || error.message);
+    res.status(500).json({
+      error: error?.response?.data || error.message || "Failed to process file",
+    });
   }
 };
 
-const handleDeleteByFile = async (req: express.Request, res: express.Response) => {
+const handleDeleteByFile = async (
+  req: express.Request,
+  res: express.Response
+) => {
   try {
     const file = req.file;
 
@@ -110,7 +120,7 @@ const handleDeleteByFile = async (req: express.Request, res: express.Response) =
       deletedCount: deleteResult.deletedCount,
     });
   } catch (error: any) {
-    console.error("Delete File Error:", error);
+    logger.error("Delete File Error", error);
     res.status(500).json({ error: error.message || "Failed to delete words" });
   }
 };
@@ -215,7 +225,6 @@ router.post(
   upload.single("file"),
   handleAssignImage
 );
-
 
 /**
  * @swagger

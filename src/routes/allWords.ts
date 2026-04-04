@@ -5,7 +5,10 @@ import { defineManyWords, getImagesByWords } from "../services/admin/imageGen";
 import fs from "fs";
 import multer from "multer";
 import { requireAdmin } from "../middleware/auth";
+import { validateBody, validateQuery } from "../middleware/validate";
+import { logger } from "../utils/logger";
 import { parseUniqueWordsFromDiskFile } from "../utils/wordList";
+import { addWordsSchema, allWordsQuerySchema } from "../validation/words";
 
 const router = express.Router();
 
@@ -56,16 +59,16 @@ const router = express.Router();
  *       500:
  *         description: Server error
  */
-router.get("/", async (req, res) => {
+router.get("/", validateQuery(allWordsQuerySchema), async (req, res) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 10;
-    const search = (req.query.search as string) || "";
+    const page = Number(req.query.page || 1);
+    const limit = Number(req.query.limit || 10);
+    const search = String(req.query.search || "");
 
     const result = await getAllWords({ page, limit, search });
     res.json(result);
   } catch (err) {
-    console.error("❌ Error in /allWords:", err);
+    logger.error("Error in /allWords", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -108,7 +111,7 @@ router.delete("/", requireAdmin, async (req, res) => {
     const success = await deleteWord(word);
     res.json({ success });
   } catch (err) {
-    console.error("❌ Error deleting word:", err);
+    logger.error("Error deleting word", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -167,27 +170,19 @@ router.post(
   async (req, res) => {
     const file = req.file;
     const promptStyle = req.body.promptStyle || "positivePrompt";
-    console.log("📁 Received file:", file?.originalname || "None");
-
     try {
       if (!file) {
-        console.warn("❌ Missing file in request.");
         res.status(400).json({ error: "File is required." });
         return;
       }
 
       const filePath = file.path;
-      console.log("📄 Reading file from:", filePath);
       const wordList = parseUniqueWordsFromDiskFile(filePath);
 
       if (wordList.length === 0) {
-        console.warn("⚠️ File contained no valid words. Deleted.");
         res.status(400).json({ error: "No valid words found in the file." });
         return;
       }
-
-      console.log("✅ Parsed unique words:", wordList.length);
-      console.log("🔤 Sample words:", wordList.slice(0, 10));
 
       const generationData = await defineManyWords(wordList, promptStyle);
       const imageAssignment = await getImagesByWords(wordList);
@@ -198,7 +193,7 @@ router.post(
         imageAssignment,
       });
     } catch (err) {
-      console.error("❌ Error uploading exam words:", err);
+      logger.error("Error uploading words", err);
       res.status(500).json({ error: "Server error." });
     } finally {
       cleanupUploadedFile(file);
@@ -206,26 +201,24 @@ router.post(
   }
 );
 
-router.post("/add", requireAdmin, async (req, res) => {
-  try {
-    const wordList = Array.isArray(req.body?.words)
-      ? req.body.words
-          .map((word: unknown) => String(word || "").trim().toLowerCase())
-          .filter(Boolean)
-      : [];
+router.post(
+  "/add",
+  requireAdmin,
+  validateBody(addWordsSchema),
+  async (req, res) => {
+    try {
+      const wordList = req.body.words.map((word: string) =>
+        word.trim().toLowerCase()
+      );
 
-    if (!wordList.length) {
-      res.status(400).json({ error: "Body must include non-empty words array" });
-      return;
+      const generationData = await defineManyWords(wordList, "positivePrompt");
+      res.status(200).json({ success: true, data: generationData });
+    } catch (err) {
+      logger.error("Error adding words", err);
+      res.status(500).json({ error: "Internal server error" });
     }
-
-    const generationData = await defineManyWords(wordList, "positivePrompt");
-    res.status(200).json({ success: true, data: generationData });
-  } catch (err) {
-    console.error("❌ Error adding words:", err);
-    res.status(500).json({ error: "Internal server error" });
   }
-});
+);
 
 /**
  * @swagger
@@ -265,14 +258,16 @@ router.post("/getImagesByWords", requireAdmin, async (req, res) => {
   try {
     const words = Array.isArray(req.body?.words) ? req.body.words : [];
     if (!words.length) {
-      res.status(400).json({ error: "Body must include non-empty words array" });
+      res
+        .status(400)
+        .json({ error: "Body must include non-empty words array" });
       return;
     }
 
     const result = await getImagesByWords(words);
     res.status(200).json({ success: true, data: result });
   } catch (err) {
-    console.error("❌ Error in /getImagesByWords:", err);
+    logger.error("Error in /getImagesByWords", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
