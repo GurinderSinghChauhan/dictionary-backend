@@ -31,9 +31,9 @@ export const getImagesByWordsSchema = z.object({
 export const categorizedWordsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),
-  subject: z.string().trim().min(1).optional(),
-  grade: z.string().trim().min(1).optional(),
-  exam: z.string().trim().min(1).optional(),
+  subject: z.string().trim().optional(),
+  grade: z.string().trim().optional(),
+  exam: z.string().trim().optional(),
 });
 
 export const categorizedWordsParamsSchema = z.object({

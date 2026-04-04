@@ -7,6 +7,17 @@ const formatZodError = (error: z.ZodError) =>
     path: issue.path.join("."),
   }));
 
+const replaceObjectValues = <T extends Record<string, unknown>>(
+  target: T,
+  source: Record<string, unknown>
+) => {
+  for (const key of Object.keys(target)) {
+    delete target[key];
+  }
+
+  Object.assign(target, source);
+};
+
 export const validateBody =
   <T extends ZodTypeAny>(schema: T) =>
   (req: Request, res: Response, next: NextFunction) => {
@@ -19,7 +30,11 @@ export const validateBody =
       return;
     }
 
-    req.body = result.data;
+    if (req.body && typeof req.body === "object") {
+      replaceObjectValues(req.body as Record<string, unknown>, result.data);
+    } else {
+      req.body = result.data;
+    }
     next();
   };
 
@@ -35,7 +50,10 @@ export const validateQuery =
       return;
     }
 
-    req.query = result.data as Request["query"];
+    replaceObjectValues(
+      req.query as Record<string, unknown>,
+      result.data as Record<string, unknown>
+    );
     next();
   };
 
@@ -51,6 +69,9 @@ export const validateParams =
       return;
     }
 
-    req.params = result.data as Request["params"];
+    replaceObjectValues(
+      req.params as Record<string, unknown>,
+      result.data as Record<string, unknown>
+    );
     next();
   };

@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import words from "../../models/words";
 import { escapeRegex, getPositiveInteger } from "../../utils/text";
 
@@ -11,6 +12,10 @@ export async function getAllWords({
   limit?: number;
   search?: string;
 }) {
+  if (mongoose.connection.readyState !== 1) {
+    throw new Error("Database connection unavailable");
+  }
+
   const safePage = getPositiveInteger(page, 1);
   const safeLimit = getPositiveInteger(limit, 10);
   const skip = (safePage - 1) * safeLimit;
@@ -37,7 +42,7 @@ export async function getAllWords({
   ]);
 
   return {
-    wordsArray: wordDocs,
+    words: wordDocs,
     total,
     page: safePage,
     totalPages: Math.ceil(total / safeLimit),

@@ -64,7 +64,6 @@ export async function getPromptHistory(promptId: string) {
     const response = await axios.get(
       `${assertComfyUiConfigured()}/history/${promptId}`
     );
-    //console.log("Prompt history response:", response.data);
     return response.data;
   } catch (error) {
     logger.error("Error fetching prompt history", error);
