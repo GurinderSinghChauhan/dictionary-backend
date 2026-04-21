@@ -1,7 +1,7 @@
 // routes/allWords.ts
 import express, { Express } from "express";
 import { getAllWords, deleteWord } from "../services/admin/allWords";
-import { defineManyWords, getImagesByWords } from "../services/admin/imageGen";
+import { defineManyWords } from "../services/admin/wordDefinition";
 import fs from "fs";
 import multer from "multer";
 import { requireAdmin } from "../middleware/auth";
@@ -12,7 +12,6 @@ import {
   addWordsSchema,
   allWordsQuerySchema,
   deleteWordQuerySchema,
-  getImagesByWordsSchema,
   uploadWordsBodySchema,
 } from "../validation/words";
 
@@ -155,11 +154,6 @@ const cleanupUploadedFile = (file?: Express.Multer.File) => {
  *                 type: string
  *                 format: binary
  *                 description: File containing words (.xlsx, .csv, .txt)
- *               promptStyle:
- *                 type: string
- *                 enum: [meaning, exampleSentence, positivePrompt]
- *                 default: positivePrompt
- *                 description: Image generation prompt style
  *     responses:
  *       200:
  *         description: Words uploaded and processed successfully
@@ -177,7 +171,6 @@ router.post(
   validateBody(uploadWordsBodySchema),
   async (req, res) => {
     const file = req.file;
-    const promptStyle = req.body.promptStyle || "positivePrompt";
     try {
       if (!file) {
         res.status(400).json({ error: "File is required." });
@@ -192,13 +185,11 @@ router.post(
         return;
       }
 
-      const generationData = await defineManyWords(wordList, promptStyle);
-      const imageAssignment = await getImagesByWords(wordList);
+      const generationData = await defineManyWords(wordList);
 
       res.status(200).json({
         success: true,
         generation: generationData,
-        imageAssignment,
       });
     } catch (err) {
       logger.error("Error uploading words", err);
@@ -219,59 +210,10 @@ router.post(
         word.trim().toLowerCase()
       );
 
-      const generationData = await defineManyWords(wordList, "positivePrompt");
+      const generationData = await defineManyWords(wordList);
       res.status(200).json({ success: true, data: generationData });
     } catch (err) {
       logger.error("Error adding words", err);
-      res.status(500).json({ error: "Internal server error" });
-    }
-  }
-);
-
-/**
- * @swagger
- * /words/getImagesByWords:
- *   post:
- *     tags:
- *       - Words - All Words
- *     summary: Get images for words (Admin only)
- *     description: Retrieve or generate images for a list of words
- *     security:
- *       - BearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - words
- *             properties:
- *               words:
- *                 type: array
- *                 items:
- *                   type: string
- *                 description: List of words to get images for
- *     responses:
- *       200:
- *         description: Images retrieved successfully
- *       400:
- *         description: Missing or empty words array
- *       401:
- *         description: Unauthorized
- *       500:
- *         description: Server error
- */
-router.post(
-  "/getImagesByWords",
-  requireAdmin,
-  validateBody(getImagesByWordsSchema),
-  async (req, res) => {
-    try {
-      const result = await getImagesByWords(req.body.words);
-      res.status(200).json({ success: true, data: result });
-    } catch (err) {
-      logger.error("Error in /getImagesByWords", err);
       res.status(500).json({ error: "Internal server error" });
     }
   }

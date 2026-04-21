@@ -1,23 +1,11 @@
 import ExamWords from "../models/examWords";
-import {
-  getImage,
-  sendPromptAPI,
-  uploadImageToS3,
-} from "./generateImageWithComfyUI";
-import { WordDetails } from "./wordServices";
+import { ensureWordForms, WordDetails } from "./wordServices";
 import { getOpenAIClient } from "./openaiClient";
-import { waitForImageFilename } from "./imagePolling";
 import { logger } from "../utils/logger";
 import { escapeRegex, normalizeWordList } from "../utils/text";
 
-export const generateImageForExam = async (
-  exam: string,
-  wordList: string[],
-  promptStyle: "meaning" | "exampleSentence" | "positivePrompt"
-) => {
+export const uploadExamWords = async (exam: string, wordList: string[]) => {
   try {
-    logger.info("Starting exam image generation", { exam, promptStyle });
-
     const cleanedWords = normalizeWordList(wordList);
 
     let examEntry = await ExamWords.findOne({
@@ -42,114 +30,28 @@ export const generateImageForExam = async (
           continue;
         }
 
-        const promptId = await sendPromptAPI(
-          promptStyle ? wordDetails[promptStyle] : wordDetails.positivePrompt
-        );
-
         const newWord = {
           ...wordDetails,
           word: wordDetails.word.toLowerCase(),
-          promptId,
+          promptId: "",
         };
 
         examEntry.words.push(newWord);
-        results.push({ term, result: { word: newWord.word }, promptId });
+        results.push({ term, result: { word: newWord.word } });
         continue;
       }
 
-      if (existingWord.imageURL) {
-        results.push({
-          term,
-          result: { word: existingWord.word },
-          promptId: existingWord.promptId || null,
-        });
-        continue;
-      }
-
-      const promptId = await sendPromptAPI(
-        promptStyle ? existingWord[promptStyle] : existingWord.positivePrompt
-      );
-      existingWord.promptId = promptId;
-      results.push({ term, result: { word: existingWord.word }, promptId });
+      results.push({
+        term,
+        result: { word: existingWord.word },
+      });
     }
 
     await examEntry.save();
     return { success: true, exam, data: results };
   } catch (err) {
-    logger.error("Error generating image for exam", err);
+    logger.error("Error uploading exam words", err);
     throw err;
-  }
-};
-
-export const assignImageToExamWord = async (
-  exam: string,
-  wordList: string[]
-) => {
-  try {
-    const results: any[] = [];
-
-    const examDoc = await ExamWords.findOne({
-      exam: new RegExp(`^${escapeRegex(exam)}$`, "i"),
-    });
-    if (!examDoc) throw new Error(`Exam "${exam}" not found`);
-
-    for (const word of wordList) {
-      const wordObj = examDoc.words.find(
-        (w: any) => w.word.toLowerCase() === word.toLowerCase()
-      );
-
-      if (!wordObj || wordObj.imageURL) {
-        results.push({
-          word,
-          status: "skipped",
-          reason: "Image already exists or word not found",
-        });
-        continue;
-      }
-
-      if (!wordObj.promptId) {
-        results.push({ word, status: "skipped", reason: "promptId not found" });
-        continue;
-      }
-
-      const filename = await waitForImageFilename(wordObj.promptId);
-      if (!filename) {
-        results.push({ word, status: "pending", reason: "Image not ready" });
-        continue;
-      }
-
-      const imageURL = await getImage(filename);
-      if (!imageURL) {
-        results.push({
-          word,
-          status: "failed",
-          reason: "Failed to retrieve image URL",
-        });
-        continue;
-      }
-
-      const imageAWSURL = await uploadImageToS3(imageURL, `${exam}-${word}`);
-
-      const updated = await ExamWords.findOneAndUpdate(
-        {
-          exam: new RegExp(`^${escapeRegex(exam)}$`, "i"),
-          "words.word": new RegExp(`^${escapeRegex(word)}$`, "i"),
-        },
-        {
-          $set: { "words.$.imageURL": imageAWSURL },
-        },
-        { new: true }
-      );
-
-      results.push({ word, status: "success", imageURL: imageAWSURL, updated });
-    }
-
-    return { exam, status: "done", results };
-  } catch (err) {
-    logger.error("Error assigning images to exam words", err);
-    const error = new Error("Failed to assign images to exam words");
-    (error as Error & { cause?: unknown }).cause = err;
-    throw error;
   }
 };
 
@@ -175,6 +77,11 @@ async function getWordDetailsInContext(word: string, context: string) {
       "negativePrompt": string
     }
 
+    For "wordForms", return a non-empty list whenever ordinary forms exist:
+    verbs should include third-person, past tense, and -ing forms; nouns should
+    include plural forms; adjectives should include comparative/superlative or
+    closely related forms.
+
     Format strictly as valid JSON with double quotes, and all fields present.
   `;
 
@@ -187,7 +94,7 @@ async function getWordDetailsInContext(word: string, context: string) {
     const data: WordDetails = JSON.parse(
       response.choices[0].message.content || "{}"
     );
-    return data;
+    return ensureWordForms(data, word);
   } catch (err) {
     logger.error("Failed to parse exam word JSON response", err);
     return null;

@@ -14,8 +14,92 @@ export interface WordDetails {
   origin: string;
   positivePrompt: string;
   negativePrompt: string;
-  promptId?: string; // Optional, for image generation service
+  promptId?: string;
 }
+
+const hasWordForms = (value: unknown): value is string[] =>
+  Array.isArray(value) && value.some((item) => String(item).trim());
+
+const pluralize = (word: string) => {
+  if (word.endsWith("y") && !/[aeiou]y$/i.test(word)) {
+    return `${word.slice(0, -1)}ies`;
+  }
+
+  if (/(s|x|z|ch|sh)$/i.test(word)) {
+    return `${word}es`;
+  }
+
+  return `${word}s`;
+};
+
+const pastTense = (word: string) => {
+  if (word.endsWith("e")) {
+    return `${word}d`;
+  }
+
+  if (word.endsWith("y") && !/[aeiou]y$/i.test(word)) {
+    return `${word.slice(0, -1)}ied`;
+  }
+
+  return `${word}ed`;
+};
+
+const presentParticiple = (word: string) => {
+  if (word.endsWith("ie")) {
+    return `${word.slice(0, -2)}ying`;
+  }
+
+  if (word.endsWith("e") && !/(ee|oe|ye)$/i.test(word)) {
+    return `${word.slice(0, -1)}ing`;
+  }
+
+  return `${word}ing`;
+};
+
+export const inferWordForms = (word: string, partOfSpeech = ""): string[] => {
+  const normalizedWord = word.trim().toLowerCase();
+  const normalizedPartOfSpeech = partOfSpeech.toLowerCase();
+
+  if (!normalizedWord) {
+    return [];
+  }
+
+  if (normalizedPartOfSpeech.includes("verb")) {
+    return [
+      pluralize(normalizedWord),
+      pastTense(normalizedWord),
+      presentParticiple(normalizedWord),
+    ];
+  }
+
+  if (normalizedPartOfSpeech.includes("noun")) {
+    return [pluralize(normalizedWord)];
+  }
+
+  if (normalizedPartOfSpeech.includes("adjective")) {
+    return [`more ${normalizedWord}`, `most ${normalizedWord}`];
+  }
+
+  return [];
+};
+
+export const ensureWordForms = <T extends Partial<WordDetails>>(
+  details: T,
+  fallbackWord: string
+): T => {
+  if (hasWordForms(details.wordForms)) {
+    details.wordForms = details.wordForms
+      .map((item) => String(item).trim())
+      .filter(Boolean);
+    return details;
+  }
+
+  details.wordForms = inferWordForms(
+    String(details.word || fallbackWord),
+    details.partOfSpeech
+  );
+  return details;
+};
 
 export async function getWordDetails(word: string): Promise<WordDetails> {
   const openai = getOpenAIClient();
@@ -27,7 +111,7 @@ export async function getWordDetails(word: string): Promise<WordDetails> {
         "word": string,                // The word itself
         "partOfSpeech": string,        // Part of speech
         "pronunciation": string,       // IPA notation if possible
-        "wordForms": string[],         // List of plural or other forms
+        "wordForms": string[],         // Non-empty list of inflected or derived forms; for verbs include third-person, past tense, and -ing forms; for nouns include plural forms; for adjectives include comparative/superlative or closely related forms
         "meaning": string,             // The most accurate meaning / definition
         "exampleSentence": string,     // Example sentence using the word
         "synonyms": string[],          // List of 3 to 5 synonyms
@@ -38,7 +122,7 @@ export async function getWordDetails(word: string): Promise<WordDetails> {
         "negativePrompt": string       // Things to avoid in the image: low quality, unrealistic render, cartoonish style, deformed shapes, AI artifacts
     }
 
-    Make sure the JSON is correctly formatted with double quotes, no extra text outside the JSON object, and all keys are present (use empty strings or empty arrays if some info is missing).
+    Make sure the JSON is correctly formatted with double quotes, no extra text outside the JSON object, and all keys are present. Do not leave wordForms empty when ordinary inflected or derived forms exist.
   `;
 
   const response = await openai.chat.completions.create({
@@ -51,7 +135,7 @@ export async function getWordDetails(word: string): Promise<WordDetails> {
   try {
     // Parse the entire response as JSON
     const data: WordDetails = JSON.parse(text);
-    return data;
+    return ensureWordForms(data, word) as WordDetails;
   } catch (err) {
     logger.error("Failed to parse word details JSON response", err);
     // Return fallback with some defaults, or throw error as needed
@@ -59,7 +143,7 @@ export async function getWordDetails(word: string): Promise<WordDetails> {
       word,
       partOfSpeech: "",
       pronunciation: "",
-      wordForms: [],
+      wordForms: inferWordForms(word),
       meaning: "",
       exampleSentence: "",
       synonyms: [],

@@ -1,9 +1,8 @@
 import express, { Express } from "express";
 import {
   addSubjectWords,
-  assignImageToSubjectWord,
-  generateImageForSubject,
   getSubjectWords,
+  uploadSubjectWords,
 } from "../services/subjectWord";
 import multer from "multer";
 import fs from "fs";
@@ -20,7 +19,6 @@ import {
   categorizedWordsParamsSchema,
   categorizedWordsQuerySchema,
   subjectAddSchema,
-  subjectAssignBodySchema,
   subjectUploadBodySchema,
 } from "../validation/words";
 
@@ -90,7 +88,6 @@ router.post(
   async (req, res) => {
     const { subject } = req.body;
     const file = req.file;
-    const promptStyle = req.body.promptStyle;
 
     try {
       if (!subject || !file) {
@@ -104,51 +101,11 @@ router.post(
         return;
       }
 
-      // Call uploadSubjectWords with subject and list of words
-      const data = await generateImageForSubject(
-        subject,
-        wordList,
-        promptStyle
-      );
-      await assignImageToSubjectWord(subject, wordList);
+      const data = await uploadSubjectWords(subject, wordList);
 
       res.status(200).json({ success: true, data });
     } catch (err) {
       logger.error("Error uploading subject words", err);
-      res.status(500).json({ error: "Server error." });
-    } finally {
-      cleanupUploadedFile(file);
-    }
-  }
-);
-
-router.post(
-  "/assign",
-  requireAdmin,
-  upload.single("file"),
-  validateBody(subjectAssignBodySchema),
-  async (req, res) => {
-    const { subject } = req.body;
-    const file = req.file;
-
-    try {
-      if (!subject || !file) {
-        res.status(400).json({ error: "Subject and file are required." });
-        return;
-      }
-
-      const words = parseUniqueWordsFromDiskFile(file.path);
-      if (words.length === 0) {
-        res.status(400).json({ error: "No valid words found in the file." });
-        return;
-      }
-
-      // Call uploadSubjectWords with subject and list of words
-      const data = await assignImageToSubjectWord(subject, words);
-
-      res.status(200).json({ success: true, data });
-    } catch (err) {
-      logger.error("Error assigning subject word images", err);
       res.status(500).json({ error: "Server error." });
     } finally {
       cleanupUploadedFile(file);

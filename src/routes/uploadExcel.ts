@@ -4,7 +4,7 @@ import multer from "multer";
 import words from "../models/words";
 import { requireAdmin } from "../middleware/auth";
 import { validateBody } from "../middleware/validate";
-import { defineManyWords, getImagesByWords } from "../services/admin/imageGen";
+import { defineManyWords } from "../services/admin/wordDefinition";
 import { logger } from "../utils/logger";
 import { parseUniqueWordsFromUpload } from "../utils/wordList";
 import { uploadWordsBodySchema } from "../validation/words";
@@ -38,50 +38,9 @@ const handleUploadExcel = async (
       return;
     }
 
-    const promptStyle =
-      (req.body?.promptStyle as
-        | "meaning"
-        | "exampleSentence"
-        | "positivePrompt") || "positivePrompt";
-    const generationData = await defineManyWords(uniqueWords, promptStyle);
+    const generationData = await defineManyWords(uniqueWords);
 
     res.json({ success: true, data: generationData });
-  } catch (error: any) {
-    logger.error("File Upload Error", error?.response?.data || error.message);
-    res.status(500).json({
-      error: error?.response?.data || error.message || "Failed to process file",
-    });
-  }
-};
-
-const handleAssignImage = async (
-  req: express.Request,
-  res: express.Response
-) => {
-  try {
-    const file = req.file;
-
-    if (!file) {
-      res.status(400).json({ error: "No file uploaded" });
-      return;
-    }
-
-    let uniqueWords: string[] = [];
-    try {
-      uniqueWords = parseUniqueWordsFromUpload(file);
-    } catch {
-      res.status(400).json({ error: "Unsupported file type" });
-      return;
-    }
-
-    if (uniqueWords.length === 0) {
-      res.status(400).json({ error: "No valid words found in file" });
-      return;
-    }
-
-    const assignmentData = await getImagesByWords(uniqueWords);
-
-    res.json({ success: true, data: assignmentData });
   } catch (error: any) {
     logger.error("File Upload Error", error?.response?.data || error.message);
     res.status(500).json({
@@ -134,7 +93,7 @@ const handleDeleteByFile = async (
  *     tags:
  *       - Upload Excel
  *     summary: Upload and process Excel/CSV file with words (Admin only)
- *     description: Upload an Excel or CSV file containing words to generate definitions and images
+ *     description: Upload an Excel or CSV file containing words to generate definitions
  *     security:
  *       - BearerAuth: []
  *     requestBody:
@@ -150,11 +109,6 @@ const handleDeleteByFile = async (
  *                 type: string
  *                 format: binary
  *                 description: Excel (.xlsx) or CSV file containing words
- *               promptStyle:
- *                 type: string
- *                 enum: [meaning, exampleSentence, positivePrompt]
- *                 default: positivePrompt
- *                 description: Image generation prompt style
  *     responses:
  *       200:
  *         description: File processed successfully
@@ -188,47 +142,6 @@ router.post(
   upload.single("file"),
   validateBody(uploadWordsBodySchema),
   handleUploadExcel
-);
-
-/**
- * @swagger
- * /uploadExcel/assign-image:
- *   post:
- *     tags:
- *       - Upload Excel
- *     summary: Assign images to words from file (Admin only)
- *     description: Upload a file with words to retrieve or assign existing images
- *     security:
- *       - BearerAuth: []
- *     requestBody:
- *       required: true
- *       content:
- *         multipart/form-data:
- *           schema:
- *             type: object
- *             required:
- *               - file
- *             properties:
- *               file:
- *                 type: string
- *                 format: binary
- *                 description: File containing words
- *     responses:
- *       200:
- *         description: Images assigned successfully
- *       400:
- *         description: No file uploaded or invalid file
- *       401:
- *         description: Unauthorized
- *       500:
- *         description: Server error
- */
-router.post(
-  "/assign-image",
-  requireAdmin,
-  upload.single("file"),
-  validateBody(uploadWordsBodySchema),
-  handleAssignImage
 );
 
 /**

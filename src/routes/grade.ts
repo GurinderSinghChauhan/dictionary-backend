@@ -1,11 +1,7 @@
 import express, { Express } from "express";
 import multer from "multer";
 import fs from "fs";
-import {
-  assignImageToGradeWord,
-  generateImageForGrade,
-  getGradeWords,
-} from "../services/gradeWord";
+import { getGradeWords, uploadGradeWords } from "../services/gradeWord";
 import GradeWords from "../models/gradeWords";
 import { requireAdmin } from "../middleware/auth";
 import { validateBody, validateQuery } from "../middleware/validate";
@@ -14,7 +10,6 @@ import { parseUniqueWordsFromDiskFile } from "../utils/wordList";
 import { escapeRegex, getPositiveInteger } from "../utils/text";
 import {
   categorizedWordsQuerySchema,
-  gradeAssignBodySchema,
   gradeUploadBodySchema,
 } from "../validation/words";
 const upload = multer({ dest: "/tmp/uploads/" });
@@ -38,7 +33,6 @@ router.post(
   async (req, res) => {
     const { grade } = req.body;
     const file = req.file;
-    const promptStyle = req.body.promptStyle || "positivePrompt";
 
     try {
       if (!grade || !file) {
@@ -62,51 +56,11 @@ router.post(
         return;
       }
 
-      // Process word list to generate images and metadata
-      const data = await generateImageForGrade(
-        grade,
-        wordList,
-        promptStyle as "meaning" | "exampleSentence" | "positivePrompt"
-      );
-      await assignImageToGradeWord(grade, wordList);
+      const data = await uploadGradeWords(grade, wordList);
 
       res.status(200).json({ success: true, data });
     } catch (err) {
       logger.error("Error uploading grade words", err);
-      res.status(500).json({ error: "Server error." });
-    } finally {
-      cleanupUploadedFile(file);
-    }
-  }
-);
-
-router.post(
-  "/assign",
-  requireAdmin,
-  upload.single("file"),
-  validateBody(gradeAssignBodySchema),
-  async (req, res) => {
-    const { grade } = req.body;
-    const file = req.file;
-
-    try {
-      if (!grade || !file) {
-        res.status(400).json({ error: "Grade and file are required." });
-        return;
-      }
-
-      const words = parseUniqueWordsFromDiskFile(file.path);
-      if (words.length === 0) {
-        res.status(400).json({ error: "No valid words found in the file." });
-        return;
-      }
-
-      // Call uploadGradeWords with grade and list of words
-      const data = await assignImageToGradeWord(grade, words);
-
-      res.status(200).json({ success: true, data });
-    } catch (err) {
-      logger.error("Error assigning grade word images", err);
       res.status(500).json({ error: "Server error." });
     } finally {
       cleanupUploadedFile(file);

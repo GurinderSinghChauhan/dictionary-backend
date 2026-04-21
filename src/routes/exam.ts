@@ -2,11 +2,7 @@
 import express, { Express } from "express";
 import multer from "multer";
 import fs from "fs";
-import {
-  generateImageForExam,
-  assignImageToExamWord,
-  getExamWords,
-} from "../services/examWord";
+import { getExamWords, uploadExamWords } from "../services/examWord";
 import ExamWords from "../models/examWords";
 import { requireAdmin } from "../middleware/auth";
 import { validateBody, validateQuery } from "../middleware/validate";
@@ -15,7 +11,6 @@ import { parseUniqueWordsFromDiskFile } from "../utils/wordList";
 import { escapeRegex, getPositiveInteger } from "../utils/text";
 import {
   categorizedWordsQuerySchema,
-  examAssignBodySchema,
   examUploadBodySchema,
 } from "../validation/words";
 
@@ -69,7 +64,6 @@ router.post(
   async (req, res) => {
     const { exam } = req.body;
     const file = req.file;
-    const promptStyle = req.body.promptStyle || "positivePrompt";
 
     try {
       if (!exam || !file) {
@@ -92,49 +86,11 @@ router.post(
         return;
       }
 
-      const generationData = await generateImageForExam(
-        exam,
-        wordList,
-        promptStyle as "meaning" | "exampleSentence" | "positivePrompt"
-      );
-      await assignImageToExamWord(exam, wordList);
+      const generationData = await uploadExamWords(exam, wordList);
 
       res.status(200).json({ success: true, data: generationData });
     } catch (err) {
       logger.error("Error uploading exam words", err);
-      res.status(500).json({ error: "Server error." });
-    } finally {
-      cleanupUploadedFile(file);
-    }
-  }
-);
-
-router.post(
-  "/assign",
-  requireAdmin,
-  upload.single("file"),
-  validateBody(examAssignBodySchema),
-  async (req, res) => {
-    const { exam } = req.body;
-    const file = req.file;
-
-    try {
-      if (!exam || !file) {
-        res.status(400).json({ error: "Exam and file are required." });
-        return;
-      }
-
-      const words = parseUniqueWordsFromDiskFile(file.path);
-      if (words.length === 0) {
-        res.status(400).json({ error: "No valid words found in the file." });
-        return;
-      }
-
-      const data = await assignImageToExamWord(exam, words);
-
-      res.status(200).json({ success: true, data });
-    } catch (err) {
-      logger.error("Error assigning exam word images", err);
       res.status(500).json({ error: "Server error." });
     } finally {
       cleanupUploadedFile(file);

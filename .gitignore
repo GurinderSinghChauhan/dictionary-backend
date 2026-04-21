@@ -25,3 +25,6 @@ logs/
 # Uploads (if not versioned)
 uploads/
 .vercel
+
+# Local source-of-truth word workbook (do not commit)
+scripts/word-generation/word-details.xlsx

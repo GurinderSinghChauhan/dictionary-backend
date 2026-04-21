@@ -1,32 +1,12 @@
-import { WordDetails } from "./wordServices";
-import {
-  getImage,
-  sendPromptAPI,
-  uploadImageToS3,
-} from "./generateImageWithComfyUI";
+import { ensureWordForms, inferWordForms, WordDetails } from "./wordServices";
 import GradeWords from "../models/gradeWords";
 import { getOpenAIClient } from "./openaiClient";
-import { waitForImageFilename } from "./imagePolling";
 import { logger } from "../utils/logger";
 import { escapeRegex, normalizeWordList } from "../utils/text";
 
-export const generateImageForGrade = async (
-  grade: string,
-  wordList: string[],
-  promptStyle: "meaning" | "exampleSentence" | "positivePrompt"
-) => {
+export const uploadGradeWords = async (grade: string, wordList: string[]) => {
   try {
-    logger.info("Starting grade image generation", {
-      grade,
-      promptStyle,
-      wordCount: wordList.length,
-    });
-
     const cleanedWords = normalizeWordList(wordList);
-    logger.info("Prepared grade word list", {
-      grade,
-      wordCount: cleanedWords.length,
-    });
 
     let gradeEntry = await GradeWords.findOne({
       grade: new RegExp(`^${escapeRegex(grade)}$`, "i"),
@@ -47,83 +27,42 @@ export const generateImageForGrade = async (
       );
 
       if (!existingWord) {
-        logger.info("Generating new grade word details", { grade, term });
         const wordDetails = await getWordDetailsInContext(term, grade);
         if (!wordDetails) {
-          logger.warn("No grade word details found", { grade, term });
           results.push({ term, error: "Word details could not be fetched." });
           continue;
         }
 
-        const promptId = await sendPromptAPI(
-          promptStyle
-            ? wordDetails[promptStyle]
-            : (wordDetails.positivePrompt ?? "")
-        );
-        logger.info("Generated prompt for new grade word", {
-          grade,
-          term,
-          promptId,
-        });
-
         const newWord = {
           ...wordDetails,
           word: wordDetails.word.toLowerCase(),
-          promptId,
+          promptId: "",
         };
 
         gradeEntry.words.push(newWord);
         results.push({
           term,
           result: { word: newWord.word, prompt: wordDetails.positivePrompt },
-          promptId,
         });
 
         continue;
       }
-
-      if (existingWord.imageURL) {
-        logger.info("Skipping grade term with existing image", { grade, term });
-        results.push({
-          term,
-          result: { word: existingWord.word },
-          promptId: existingWord.promptId || null,
-        });
-        continue;
-      }
-
-      logger.info("Generating prompt for existing grade term", { grade, term });
-      const promptId = await sendPromptAPI(
-        promptStyle
-          ? existingWord[promptStyle]
-          : (existingWord.positivePrompt ?? "")
-      );
-      logger.info("Generated prompt for existing grade word", {
-        grade,
-        term,
-        promptId,
-      });
-
-      existingWord.promptId = promptId;
 
       results.push({
         term,
         result: { word: existingWord.word },
-        promptId,
       });
     }
 
-    logger.info("Saving grade image generation results", { grade });
     await gradeEntry.save();
 
-    logger.info("Completed grade image generation", { grade });
     return {
       success: true,
       grade,
       data: results,
     };
   } catch (error) {
-    logger.error("Error generating image for grade", error);
+    logger.error("Error uploading grade words", error);
     throw error;
   }
 };
@@ -165,6 +104,11 @@ async function getWordDetailsInContext(word: string, context: string) {
     For example, if the word is "eruption", the positivePrompt could be:
     "A powerful volcanic eruption with lava spewing into the sky, dark smoke clouds, red-hot molten rocks, and villagers watching from a safe distance — dramatic lighting, National Geographic style."
   
+    For "wordForms", return a non-empty list whenever ordinary forms exist:
+    verbs should include third-person, past tense, and -ing forms; nouns should
+    include plural forms; adjectives should include comparative/superlative or
+    closely related forms.
+  
     Format strictly as valid JSON with double quotes and all fields present.
   `;
 
@@ -177,14 +121,14 @@ async function getWordDetailsInContext(word: string, context: string) {
 
   try {
     const data: WordDetails = JSON.parse(text);
-    return data;
+    return ensureWordForms(data, word);
   } catch (err) {
     logger.error("Failed to parse grade word JSON response", err);
     return {
       word,
       partOfSpeech: "",
       pronunciation: "",
-      wordForms: [],
+      wordForms: inferWordForms(word),
       meaning: "",
       exampleSentence: "",
       synonyms: [],
@@ -196,80 +140,6 @@ async function getWordDetailsInContext(word: string, context: string) {
     };
   }
 }
-
-export const assignImageToGradeWord = async (
-  grade: string,
-  wordList: string[]
-) => {
-  try {
-    const results: any[] = [];
-
-    const gradeDoc = await GradeWords.findOne({
-      grade: new RegExp(`^${escapeRegex(grade)}$`, "i"),
-    });
-    if (!gradeDoc) {
-      throw new Error(`Grade "${grade}" not found`);
-    }
-
-    for (const word of wordList) {
-      const wordObj = gradeDoc.words.find(
-        (w: any) => w.word.toLowerCase() === word.toLowerCase()
-      );
-
-      if (!wordObj || wordObj.imageURL) {
-        results.push({
-          word,
-          status: "skipped",
-          reason: "Image already exists",
-        });
-        continue;
-      }
-
-      if (!wordObj.promptId) {
-        results.push({ word, status: "skipped", reason: "promptId not found" });
-        continue;
-      }
-
-      const filename = await waitForImageFilename(wordObj.promptId);
-      if (!filename) {
-        results.push({ word, status: "pending", reason: "Image not ready" });
-        continue;
-      }
-
-      const imageURL = await getImage(filename);
-      if (!imageURL) {
-        results.push({
-          word,
-          status: "failed",
-          reason: "Failed to retrieve image URL",
-        });
-        continue;
-      }
-
-      const imageAWSURL = await uploadImageToS3(imageURL, `${grade}-${word}`);
-
-      const updated = await GradeWords.findOneAndUpdate(
-        {
-          grade: new RegExp(`^${escapeRegex(grade)}$`, "i"),
-          "words.word": new RegExp(`^${escapeRegex(word)}$`, "i"),
-        },
-        {
-          $set: { "words.$.imageURL": imageAWSURL },
-        },
-        { new: true }
-      );
-
-      results.push({ word, status: "success", imageURL: imageAWSURL, updated });
-    }
-
-    return { grade, status: "done", results };
-  } catch (error) {
-    logger.error("Error assigning images to grade words", error);
-    const wrappedError = new Error("Failed to assign images to grade words");
-    (wrappedError as Error & { cause?: unknown }).cause = error;
-    throw wrappedError;
-  }
-};
 
 export const getGradeWords = async (
   grade: string,

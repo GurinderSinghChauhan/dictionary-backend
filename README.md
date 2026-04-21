@@ -46,10 +46,19 @@ This repo is configured for Vercel deployment via:
 - `JWT_SECRET`
 - `OPENAI_API_KEY`
 - `GOOGLE_CLIENT_ID` (and platform client IDs if needed)
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-- `COMFYUI_BASE_URL` (required if image generation routes are used on Vercel)
 - `CORS_ORIGINS` (comma-separated frontend origins)
+
+### Local-only automation variables
+
+Image generation is intentionally kept out of the production app. Local scripts under `scripts/image-generation/` use the variables documented in `scripts/image-generation/.env.example`:
+
+- `GEMINI_API_KEY`
+- `GEMINI_IMAGE_MODEL` (optional, defaults to `gemini-3-pro-image-preview`)
+- `GEMINI_IMAGE_MODELS` (optional comma-separated fallback list)
+- `CLOUDINARY_CLOUD_NAME`
+- `CLOUDINARY_API_KEY`
+- `CLOUDINARY_API_SECRET`
+- `CLOUDINARY_FOLDER` (optional, defaults to `dictionary-images`)
 
 ### Deploy
 
