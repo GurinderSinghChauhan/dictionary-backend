@@ -108,6 +108,10 @@ async function getWordDetailsInContext(word: string, context: string) {
     verbs should include third-person, past tense, and -ing forms; nouns should
     include plural forms; adjectives should include comparative/superlative or
     closely related forms.
+
+    For "memoryTrick", do not use the definition as the trick. Use a short
+    mnemonic, sound-alike cue, visual association, or word-part connection that
+    helps a learner remember the word.
   
     Format strictly as valid JSON with double quotes and all fields present.
   `;

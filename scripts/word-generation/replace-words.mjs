@@ -10,7 +10,7 @@ const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const workbookPath =
   process.argv[2] || path.join(scriptDir, "word-details.xlsx");
 const arrayFields = ["wordForms", "synonyms", "antonyms"];
-const stringFields = [
+const requiredStringFields = [
   "word",
   "partOfSpeech",
   "pronunciation",
@@ -20,6 +20,8 @@ const stringFields = [
   "origin",
   "positivePrompt",
   "negativePrompt",
+];
+const optionalStringFields = [
   "imageURL",
   "promptId",
 ];
@@ -69,9 +71,15 @@ function readWordDocuments() {
   const rows = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], {
     defval: "",
   });
+  const headerNames = new Set(Object.keys(rows[0] || {}));
+  const stringFields = [
+    ...requiredStringFields,
+    ...optionalStringFields.filter((field) => headerNames.has(field)),
+  ];
+  const documentFields = [...stringFields, ...arrayFields];
   const seenWords = new Set();
 
-  return rows.map((row, index) => {
+  const documents = rows.map((row, index) => {
     const document = {};
 
     for (const field of stringFields) {
@@ -95,10 +103,40 @@ function readWordDocuments() {
 
     return document;
   });
+
+  return { documents, documentFields };
+}
+
+function valuesAreEqual(left, right) {
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right)) {
+      return false;
+    }
+
+    if (left.length !== right.length) {
+      return false;
+    }
+
+    return left.every((item, index) => item === right[index]);
+  }
+
+  return String(left ?? "") === String(right ?? "");
+}
+
+function getChangedFields(document, existingDocument, documentFields) {
+  const changedFields = {};
+
+  for (const field of documentFields) {
+    if (!valuesAreEqual(document[field], existingDocument?.[field])) {
+      changedFields[field] = document[field];
+    }
+  }
+
+  return changedFields;
 }
 
 async function main() {
-  const documents = readWordDocuments();
+  const { documents, documentFields } = readWordDocuments();
 
   if (documents.length === 0) {
     throw new Error(`No word rows found in ${workbookPath}`);
@@ -107,10 +145,82 @@ async function main() {
   const db = await connectDictionaryDb();
   const collection = db.collection("words");
   const beforeCount = await collection.countDocuments({});
+  const workbookWords = documents.map((document) => document.word);
+  const existingDocuments = await collection
+    .find(
+      { word: { $in: workbookWords } },
+      {
+        projection: Object.fromEntries(
+          documentFields.map((field) => [field, 1])
+        ),
+      }
+    )
+    .toArray();
+  const existingByWord = new Map(
+    existingDocuments.map((document) => [document.word, document])
+  );
 
-  await collection.deleteMany({});
-  const insertResult = await collection.insertMany(documents, {
-    ordered: true,
+  let unchanged = 0;
+  let inserts = 0;
+  let updates = 0;
+  const operations = [];
+
+  for (const document of documents) {
+    const existingDocument = existingByWord.get(document.word);
+
+    if (!existingDocument) {
+      inserts += 1;
+      operations.push({
+        insertOne: {
+          document,
+        },
+      });
+      continue;
+    }
+
+    const changedFields = getChangedFields(
+      document,
+      existingDocument,
+      documentFields
+    );
+    if (Object.keys(changedFields).length === 0) {
+      unchanged += 1;
+      continue;
+    }
+
+    updates += 1;
+    operations.push({
+      updateOne: {
+        filter: { word: document.word },
+        update: { $set: changedFields },
+      },
+    });
+  }
+
+  if (operations.length === 0) {
+    const afterCount = await collection.countDocuments({});
+    console.log(
+      JSON.stringify(
+        {
+          database: "dictionary",
+          collection: "words",
+          source: workbookPath,
+          workbookRows: documents.length,
+          updates,
+          inserts,
+          unchanged,
+          beforeCount,
+          count: afterCount,
+        },
+        null,
+        2
+      )
+    );
+    return;
+  }
+
+  const writeResult = await collection.bulkWrite(operations, {
+    ordered: false,
   });
   const afterCount = await collection.countDocuments({});
 
@@ -120,8 +230,14 @@ async function main() {
         database: "dictionary",
         collection: "words",
         source: workbookPath,
-        deleted: beforeCount,
-        inserted: insertResult.insertedCount,
+        workbookRows: documents.length,
+        updates,
+        inserts,
+        unchanged,
+        matched: writeResult.matchedCount,
+        modified: writeResult.modifiedCount,
+        inserted: writeResult.insertedCount,
+        beforeCount,
         count: afterCount,
       },
       null,

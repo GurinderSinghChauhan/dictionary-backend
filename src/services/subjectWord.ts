@@ -152,6 +152,10 @@ async function getWordDetailsInContext(word: string, subject: string) {
     include plural forms; adjectives should include comparative/superlative or
     closely related forms.
 
+    For "memoryTrick", do not use the definition as the trick. Use a short
+    mnemonic, sound-alike cue, visual association, or word-part connection that
+    helps a learner remember the word.
+
     Format strictly as valid JSON with double quotes and include all keys, even if some values are empty.
   `;
 

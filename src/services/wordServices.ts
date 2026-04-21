@@ -116,13 +116,15 @@ export async function getWordDetails(word: string): Promise<WordDetails> {
         "exampleSentence": string,     // Example sentence using the word
         "synonyms": string[],          // List of 3 to 5 synonyms
         "antonyms": string[],          // List of antonyms (if available)
-        "memoryTrick": string,         // A memory trick or way to remember the word
+        "memoryTrick": string,         // A mnemonic, sound-alike cue, visual association, or word-part trick to remember the word; do not restate the definition
         "origin": string,              // Short origin story or etymology
         "positivePrompt": string,      // A vivid, photorealistic image prompt related to the word, capturing the core meaning in a real-world scene
         "negativePrompt": string       // Things to avoid in the image: low quality, unrealistic render, cartoonish style, deformed shapes, AI artifacts
     }
 
     Make sure the JSON is correctly formatted with double quotes, no extra text outside the JSON object, and all keys are present. Do not leave wordForms empty when ordinary inflected or derived forms exist.
+
+    For "memoryTrick", do not use the definition as the trick. Use a short mnemonic, sound-alike cue, visual association, or word-part connection that helps a learner remember the word.
   `;
 
   const response = await openai.chat.completions.create({
