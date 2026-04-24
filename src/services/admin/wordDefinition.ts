@@ -1,6 +1,8 @@
-import words from "../../models/words";
 import { getWordDetails } from "../wordServices";
 import { normalizeWord } from "../../utils/text";
+import words from "../../models/words";
+import { upsertWordSense } from "../wordSensePersistence";
+import WordSense from "../../models/wordSense";
 
 export const defineManyWords = async (wordArray: string[]) => {
   if (!Array.isArray(wordArray) || wordArray.length === 0) {
@@ -14,6 +16,29 @@ export const defineManyWords = async (wordArray: string[]) => {
     const existing = await words.findOne({ word: term });
 
     if (existing) {
+      const existingGenericSense = await WordSense.findOne({
+        normalizedWord: term,
+        contexts: {
+          $elemMatch: {
+            type: "generic",
+            key: "",
+          },
+        },
+        status: "active",
+      }).lean();
+
+      if (!existingGenericSense) {
+        await upsertWordSense(
+          term,
+          {
+            ...existing.toObject(),
+            word: term,
+          },
+          "generic",
+          ""
+        );
+      }
+
       results.push({ term, result: { word: existing.word } });
       continue;
     }
@@ -21,9 +46,8 @@ export const defineManyWords = async (wordArray: string[]) => {
     const wordData = await getWordDetails(term);
     wordData.word = term;
     wordData.promptId = "";
-
-    const savedWord = await words.create(wordData);
-    results.push({ term, result: { word: savedWord.word } });
+    await upsertWordSense(term, wordData, "generic", "");
+    results.push({ term, result: { word: term } });
   }
 
   return { success: true, data: results };

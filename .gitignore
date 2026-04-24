@@ -28,3 +28,6 @@ uploads/
 
 # Local source-of-truth word workbook (do not commit)
 scripts/word-generation/word-details.xlsx
+scripts/word-generation/exams
+scripts/word-generation/grades
+scripts/word-generation/subjects

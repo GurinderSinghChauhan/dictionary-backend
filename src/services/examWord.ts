@@ -1,27 +1,33 @@
-import ExamWords from "../models/examWords";
+import WordSense from "../models/wordSense";
 import { ensureWordForms, WordDetails } from "./wordServices";
 import { getOpenAIClient } from "./openaiClient";
 import { logger } from "../utils/logger";
-import { escapeRegex, normalizeWordList } from "../utils/text";
+import { normalizeWordList } from "../utils/text";
+import { upsertWordSense } from "./wordSensePersistence";
+import { getContextWords } from "./contextWordListing";
 
 export const uploadExamWords = async (exam: string, wordList: string[]) => {
   try {
     const cleanedWords = normalizeWordList(wordList);
-
-    let examEntry = await ExamWords.findOne({
-      exam: new RegExp(`^${escapeRegex(exam)}$`, "i"),
-    });
-
-    if (!examEntry) {
-      examEntry = new ExamWords({ exam, words: [] });
-    }
+    const normalizedExam = exam.trim().toLowerCase();
+    const existingSenses = await WordSense.find({
+      normalizedWord: { $in: cleanedWords },
+      contexts: {
+        $elemMatch: {
+          type: "exam",
+          key: normalizedExam,
+        },
+      },
+      status: "active",
+    }).lean();
+    const existingWords = new Set(
+      existingSenses.map((sense) => String(sense.normalizedWord).toLowerCase())
+    );
 
     const results = [];
 
     for (const term of cleanedWords) {
-      const existingWord = examEntry.words.find(
-        (w: any) => w.word.toLowerCase() === term
-      );
+      const existingWord = existingWords.has(term);
 
       if (!existingWord) {
         const wordDetails = await getWordDetailsInContext(term, exam);
@@ -29,6 +35,7 @@ export const uploadExamWords = async (exam: string, wordList: string[]) => {
           results.push({ term, error: "Word details could not be fetched." });
           continue;
         }
+        await upsertWordSense(term, wordDetails, "exam", exam);
 
         const newWord = {
           ...wordDetails,
@@ -36,18 +43,15 @@ export const uploadExamWords = async (exam: string, wordList: string[]) => {
           promptId: "",
         };
 
-        examEntry.words.push(newWord);
         results.push({ term, result: { word: newWord.word } });
         continue;
       }
 
       results.push({
         term,
-        result: { word: existingWord.word },
+        result: { word: term },
       });
     }
-
-    await examEntry.save();
     return { success: true, exam, data: results };
   } catch (err) {
     logger.error("Error uploading exam words", err);
@@ -82,9 +86,10 @@ async function getWordDetailsInContext(word: string, context: string) {
     include plural forms; adjectives should include comparative/superlative or
     closely related forms.
 
-    For "memoryTrick", do not use the definition as the trick. Use a short
-    mnemonic, sound-alike cue, visual association, or word-part connection that
-    helps a learner remember the word.
+    For "memoryTrick", write it in a way that helps the reader easily remember
+    the meaning of the word. Use a short learner-friendly mnemonic,
+    sound-alike cue, visual association, or word-part connection that points
+    toward the meaning. Do not merely restate the definition.
 
     Format strictly as valid JSON with double quotes, and all fields present.
   `;
@@ -110,29 +115,5 @@ export const getExamWords = async (
   page: number,
   limit: number
 ) => {
-  if (!exam) throw new Error("Exam is required.");
-
-  const result = await ExamWords.findOne({
-    exam: new RegExp(`^${escapeRegex(exam)}$`, "i"),
-  });
-
-  if (!result) throw new Error("Exam not found.");
-
-  const startIndex = (page - 1) * limit;
-
-  // Just return word + meaning
-  const paginatedWords = result.words
-    .slice(startIndex, startIndex + limit)
-    .map((item: any) => ({
-      word: item.word,
-      meaning: item.meaning,
-    }));
-
-  return {
-    exam: result.exam,
-    totalWords: result.words.length,
-    page,
-    totalPages: Math.ceil(result.words.length / limit),
-    words: paginatedWords, // simplified array
-  };
+  return getContextWords("exam", exam, page, limit);
 };

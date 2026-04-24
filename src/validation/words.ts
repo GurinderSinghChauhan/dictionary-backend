@@ -18,6 +18,25 @@ export const deleteWordQuerySchema = z.object({
   word: nonEmptyWordSchema,
 });
 
+export const defineWordQuerySchema = z
+  .object({
+    contextType: z.enum(["generic", "subject", "grade", "exam"]).optional(),
+    contextKey: z.string().trim().optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (
+      value.contextType &&
+      value.contextType !== "generic" &&
+      !value.contextKey
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "contextKey is required when contextType is provided",
+        path: ["contextKey"],
+      });
+    }
+  });
+
 export const categorizedWordsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional(),
   limit: z.coerce.number().int().min(1).max(100).optional(),

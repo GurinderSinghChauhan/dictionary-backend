@@ -1,6 +1,12 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import xlsx from "xlsx";
+import {
+  normalizeWordKey,
+  readWorkbookRows,
+  senseColumns,
+  writeWorkbookRows,
+} from "./workbook-utils.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const workbookPath =
@@ -127,7 +133,7 @@ function defaultAdjectiveForms(word) {
 }
 
 function wordFormsFor(row) {
-  const word = String(row.word || "").trim().toLowerCase();
+  const word = normalizeWordKey(row);
   const partOfSpeech = String(row.partOfSpeech || "").trim().toLowerCase();
 
   if (!word) {
@@ -153,16 +159,10 @@ function wordFormsFor(row) {
   return [];
 }
 
-const workbook = xlsx.readFile(workbookPath);
-const sheetName = workbook.SheetNames[0];
-
-if (!sheetName) {
-  throw new Error(`No sheets found in ${workbookPath}`);
-}
-
-const rows = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], {
-  defval: "",
-});
+const { workbook, sheetName, rows } = readWorkbookRows(workbookPath);
+const hasSenseColumns = rows.some(
+  (row) => "senseId" in row || "normalizedWord" in row || "contextType" in row
+);
 
 let updated = 0;
 for (const row of rows) {
@@ -179,7 +179,12 @@ for (const row of rows) {
   updated += 1;
 }
 
-workbook.Sheets[sheetName] = xlsx.utils.json_to_sheet(rows);
+writeWorkbookRows(
+  workbook,
+  sheetName,
+  rows,
+  hasSenseColumns ? senseColumns : undefined
+);
 xlsx.writeFile(workbook, workbookPath);
 
 console.log(

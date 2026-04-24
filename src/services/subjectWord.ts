@@ -1,9 +1,11 @@
 // controllers/subject.ts
-import SubjectWords from "../models/subjectWords";
+import WordSense from "../models/wordSense";
 import { ensureWordForms, inferWordForms, WordDetails } from "./wordServices";
 import { getOpenAIClient } from "./openaiClient";
 import { logger } from "../utils/logger";
-import { escapeRegex, normalizeWordList } from "../utils/text";
+import { normalizeWordList } from "../utils/text";
+import { upsertWordSense } from "./wordSensePersistence";
+import { getContextWords } from "./contextWordListing";
 
 const getSubjectContext = (subject: string) => {
   const normalized = subject.toLowerCase();
@@ -22,47 +24,21 @@ export const addSubjectWords = async (subject: string, words: unknown[]) => {
     if (!subject || !Array.isArray(words) || words.length === 0) {
       throw new Error("Subject and words array are required.");
     }
+    const normalizedSubject = subject.trim().toLowerCase();
 
-    return await SubjectWords.findOneAndUpdate(
-      { subject: new RegExp(`^${escapeRegex(subject)}$`, "i") },
-      { $set: { subject }, $push: { words: { $each: words } } },
-      { new: true, upsert: true }
-    );
+    for (const item of words as WordDetails[]) {
+      await upsertWordSense(item.word, item, "subject", normalizedSubject);
+    }
+
+    return {
+      subject,
+      addedWords: (words as WordDetails[]).map((item) => item.word),
+    };
   } catch (err) {
     logger.error("Error adding subject words", err);
     throw err;
   }
 };
-
-// Get subject words with their meaning
-// export const getSubjectWords = async (
-//   subject: string,
-//   page: number,
-//   limit: number
-// ) => {
-//   if (!subject) {
-//     throw new Error("Subject is required.");
-//   }
-
-//   const result = await SubjectWords.findOne({
-//     subject: new RegExp(`^${subject}$`, "i"),
-//   });
-
-//   if (!result) {
-//     throw new Error("Subject not found.");
-//   }
-
-//   const startIndex = (page - 1) * limit;
-//   const paginatedWords = result.words.slice(startIndex, startIndex + limit);
-
-//   return {
-//     subject: result.subject,
-//     totalWords: result.words.length,
-//     page,
-//     totalPages: Math.ceil(result.words.length / limit),
-//     words: paginatedWords,
-//   };
-// };
 
 export const uploadSubjectWords = async (
   subject: string,
@@ -70,17 +46,22 @@ export const uploadSubjectWords = async (
 ) => {
   try {
     const cleanedWords = normalizeWordList(wordList);
-
-    // Get existing words for the subject
-    const existingEntry = await SubjectWords.findOne({
-      subject: new RegExp(`^${escapeRegex(subject)}$`, "i"),
-    });
-
+    const normalizedSubject = subject.trim().toLowerCase();
+    const existingSenses = await WordSense.find({
+      normalizedWord: { $in: cleanedWords },
+      contexts: {
+        $elemMatch: {
+          type: "subject",
+          key: normalizedSubject,
+        },
+      },
+      status: "active",
+    }).lean();
     const existingWords = new Set<string>(
-      (existingEntry?.words || []).map((w: any) => w.word.toLowerCase())
+      existingSenses.map((sense) => String(sense.normalizedWord).toLowerCase())
     );
 
-    const addedWords: any[] = [];
+    const addedWords: string[] = [];
     const skippedWords: string[] = [];
 
     for (const word of cleanedWords) {
@@ -92,20 +73,17 @@ export const uploadSubjectWords = async (
           word,
           getSubjectContext(subject)
         );
-        addedWords.push(wordDetails);
+        await upsertWordSense(word, wordDetails, "subject", subject);
+        addedWords.push(wordDetails.word.toLowerCase());
       }
     }
-    // Insert only new words
-    const updated = await SubjectWords.findOneAndUpdate(
-      { subject: new RegExp(`^${escapeRegex(subject)}$`, "i") },
-      { $set: { subject }, $push: { words: { $each: addedWords } } },
-      { new: true, upsert: true }
-    );
 
     return {
-      updated,
-      addedWords: addedWords.map((w) => w.word),
+      updated: null,
+      subject,
+      addedWords,
       skippedWords,
+      source: "word_senses" as const,
     };
   } catch (err) {
     logger.error("Error uploading subject words", err);
@@ -152,9 +130,10 @@ async function getWordDetailsInContext(word: string, subject: string) {
     include plural forms; adjectives should include comparative/superlative or
     closely related forms.
 
-    For "memoryTrick", do not use the definition as the trick. Use a short
-    mnemonic, sound-alike cue, visual association, or word-part connection that
-    helps a learner remember the word.
+    For "memoryTrick", write it in a way that helps the reader easily remember
+    the meaning of the word. Use a short learner-friendly mnemonic,
+    sound-alike cue, visual association, or word-part connection that points
+    toward the meaning. Do not merely restate the definition.
 
     Format strictly as valid JSON with double quotes and include all keys, even if some values are empty.
   `;
@@ -195,29 +174,5 @@ export const getSubjectWords = async (
   page: number,
   limit: number
 ) => {
-  if (!subject) throw new Error("Subject is required.");
-
-  const result = await SubjectWords.findOne({
-    subject: new RegExp(`^${escapeRegex(subject)}$`, "i"),
-  });
-
-  if (!result) throw new Error("Subject not found.");
-
-  const startIndex = (page - 1) * limit;
-
-  // Just return word + meaning
-  const paginatedWords = result.words
-    .slice(startIndex, startIndex + limit)
-    .map((item: any) => ({
-      word: item.word,
-      meaning: item.meaning,
-    }));
-
-  return {
-    subject: result.subject,
-    totalWords: result.words.length,
-    page,
-    totalPages: Math.ceil(result.words.length / limit),
-    words: paginatedWords, // simplified array
-  };
+  return getContextWords("subject", subject, page, limit);
 };

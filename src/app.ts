@@ -14,6 +14,9 @@ import gradeRouter from "./routes/grade";
 import examRouter from "./routes/exam";
 import { swaggerSpec } from "./config/swagger";
 import { logger } from "./utils/logger";
+import { validateQuery } from "./middleware/validate";
+import { defineWordQuerySchema } from "./validation/words";
+import { lookupWord } from "./services/wordLookup";
 
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -146,26 +149,52 @@ if (process.env.VERCEL) {
  *         required: true
  *         schema:
  *           type: string
+ *       - name: contextType
+ *         in: query
+ *         schema:
+ *           type: string
+ *           enum: [generic, subject, grade, exam]
+ *         description: Optional context type for meaning-specific lookup
+ *       - name: contextKey
+ *         in: query
+ *         schema:
+ *           type: string
+ *         description: Context key such as biology, neet, or grade-8
  *     responses:
  *       200:
  *         description: Word found
  *       404:
  *         description: Word not found
  */
-app.get("/define/:word", async (req, res) => {
-  try {
-    const term = req.params.word.toLowerCase();
-    const existing = await words.findOne({ word: term });
-    if (existing) {
-      res.json({ term, result: existing, promptId: existing.promptId || null });
-      return;
+app.get(
+  "/define/:word",
+  validateQuery(defineWordQuerySchema),
+  async (req, res) => {
+    try {
+      const lookup = await lookupWord(req.params.word, {
+        contextType: req.query.contextType as
+          | "generic"
+          | "subject"
+          | "grade"
+          | "exam"
+          | undefined,
+        contextKey: String(req.query.contextKey || ""),
+      });
+
+      if (!lookup) {
+        res.status(404).json({
+          error: `Word '${req.params.word.toLowerCase()}' not found in database.`,
+        });
+        return;
+      }
+
+      res.json(lookup);
+    } catch (err) {
+      logger.error("Error fetching word details", err);
+      res.status(500).json({ error: "Something went wrong" });
     }
-    res.status(404).json({ error: `Word '${term}' not found in database.` });
-  } catch (err) {
-    logger.error("Error fetching word details", err);
-    res.status(500).json({ error: "Something went wrong" });
   }
-});
+);
 
 /**
  * @swagger

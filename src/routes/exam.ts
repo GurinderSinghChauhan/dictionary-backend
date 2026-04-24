@@ -3,12 +3,11 @@ import express, { Express } from "express";
 import multer from "multer";
 import fs from "fs";
 import { getExamWords, uploadExamWords } from "../services/examWord";
-import ExamWords from "../models/examWords";
 import { requireAdmin } from "../middleware/auth";
 import { validateBody, validateQuery } from "../middleware/validate";
 import { logger } from "../utils/logger";
 import { parseUniqueWordsFromDiskFile } from "../utils/wordList";
-import { escapeRegex, getPositiveInteger } from "../utils/text";
+import { getPositiveInteger } from "../utils/text";
 import {
   categorizedWordsQuerySchema,
   examUploadBodySchema,
@@ -69,15 +68,6 @@ router.post(
       if (!exam || !file) {
         res.status(400).json({ error: "Exam and file are required." });
         return;
-      }
-
-      let examEntry = await ExamWords.findOne({
-        exam: new RegExp(`^${escapeRegex(exam)}$`, "i"),
-      });
-
-      if (!examEntry) {
-        examEntry = await ExamWords.create({ exam, words: [] });
-        logger.info("Created exam entry", { exam });
       }
 
       const wordList = parseUniqueWordsFromDiskFile(file.path);

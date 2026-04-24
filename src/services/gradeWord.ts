@@ -1,30 +1,34 @@
 import { ensureWordForms, inferWordForms, WordDetails } from "./wordServices";
-import GradeWords from "../models/gradeWords";
+import WordSense from "../models/wordSense";
 import { getOpenAIClient } from "./openaiClient";
 import { logger } from "../utils/logger";
-import { escapeRegex, normalizeWordList } from "../utils/text";
+import { normalizeWordList } from "../utils/text";
+import { upsertWordSense } from "./wordSensePersistence";
+import { getContextWords } from "./contextWordListing";
 
 export const uploadGradeWords = async (grade: string, wordList: string[]) => {
   try {
     const cleanedWords = normalizeWordList(wordList);
-
-    let gradeEntry = await GradeWords.findOne({
-      grade: new RegExp(`^${escapeRegex(grade)}$`, "i"),
-    });
-
-    if (!gradeEntry) {
-      logger.warn("Grade entry not found, creating a new one", { grade });
-      gradeEntry = new GradeWords({ grade: grade, words: [] });
-    }
+    const normalizedGrade = grade.trim().toLowerCase();
+    const existingSenses = await WordSense.find({
+      normalizedWord: { $in: cleanedWords },
+      contexts: {
+        $elemMatch: {
+          type: "grade",
+          key: normalizedGrade,
+        },
+      },
+      status: "active",
+    }).lean();
+    const existingWords = new Set(
+      existingSenses.map((sense) => String(sense.normalizedWord).toLowerCase())
+    );
 
     const results = [];
 
     for (const term of cleanedWords) {
       logger.info("Processing grade term", { grade, term });
-
-      const existingWord = gradeEntry.words.find(
-        (w: any) => w.word.toLowerCase() === term
-      );
+      const existingWord = existingWords.has(term);
 
       if (!existingWord) {
         const wordDetails = await getWordDetailsInContext(term, grade);
@@ -32,14 +36,13 @@ export const uploadGradeWords = async (grade: string, wordList: string[]) => {
           results.push({ term, error: "Word details could not be fetched." });
           continue;
         }
+        await upsertWordSense(term, wordDetails, "grade", grade);
 
         const newWord = {
           ...wordDetails,
           word: wordDetails.word.toLowerCase(),
           promptId: "",
         };
-
-        gradeEntry.words.push(newWord);
         results.push({
           term,
           result: { word: newWord.word, prompt: wordDetails.positivePrompt },
@@ -50,11 +53,9 @@ export const uploadGradeWords = async (grade: string, wordList: string[]) => {
 
       results.push({
         term,
-        result: { word: existingWord.word },
+        result: { word: term },
       });
     }
-
-    await gradeEntry.save();
 
     return {
       success: true,
@@ -109,9 +110,10 @@ async function getWordDetailsInContext(word: string, context: string) {
     include plural forms; adjectives should include comparative/superlative or
     closely related forms.
 
-    For "memoryTrick", do not use the definition as the trick. Use a short
-    mnemonic, sound-alike cue, visual association, or word-part connection that
-    helps a learner remember the word.
+    For "memoryTrick", write it in a way that helps the reader easily remember
+    the meaning of the word. Use a short learner-friendly mnemonic,
+    sound-alike cue, visual association, or word-part connection that points
+    toward the meaning. Do not merely restate the definition.
   
     Format strictly as valid JSON with double quotes and all fields present.
   `;
@@ -150,29 +152,5 @@ export const getGradeWords = async (
   page: number,
   limit: number
 ) => {
-  if (!grade) throw new Error("Grade is required.");
-
-  const result = await GradeWords.findOne({
-    grade: new RegExp(`^${escapeRegex(grade)}$`, "i"),
-  });
-
-  if (!result) throw new Error("Grade not found.");
-
-  const startIndex = (page - 1) * limit;
-
-  // Just return word + meaning
-  const paginatedWords = result.words
-    .slice(startIndex, startIndex + limit)
-    .map((item: any) => ({
-      word: item.word,
-      meaning: item.meaning,
-    }));
-
-  return {
-    grade: result.grade,
-    totalWords: result.words.length,
-    page,
-    totalPages: Math.ceil(result.words.length / limit),
-    words: paginatedWords, // simplified array
-  };
+  return getContextWords("grade", grade, page, limit);
 };

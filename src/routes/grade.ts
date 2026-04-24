@@ -2,12 +2,11 @@ import express, { Express } from "express";
 import multer from "multer";
 import fs from "fs";
 import { getGradeWords, uploadGradeWords } from "../services/gradeWord";
-import GradeWords from "../models/gradeWords";
 import { requireAdmin } from "../middleware/auth";
 import { validateBody, validateQuery } from "../middleware/validate";
 import { logger } from "../utils/logger";
 import { parseUniqueWordsFromDiskFile } from "../utils/wordList";
-import { escapeRegex, getPositiveInteger } from "../utils/text";
+import { getPositiveInteger } from "../utils/text";
 import {
   categorizedWordsQuerySchema,
   gradeUploadBodySchema,
@@ -38,16 +37,6 @@ router.post(
       if (!grade || !file) {
         res.status(400).json({ error: "Grade and file are required." });
         return;
-      }
-
-      // Ensure the grade document exists (case-insensitive check)
-      let gradeEntry = await GradeWords.findOne({
-        grade: new RegExp(`^${escapeRegex(grade)}$`, "i"),
-      });
-
-      if (!gradeEntry) {
-        gradeEntry = await GradeWords.create({ grade, words: [] });
-        logger.info("Created grade entry", { grade });
       }
 
       const wordList = parseUniqueWordsFromDiskFile(file.path);

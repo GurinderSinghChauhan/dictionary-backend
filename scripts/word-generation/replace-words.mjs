@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import xlsx from "xlsx";
+import { parseArrayCell, readWorkbookRows } from "./workbook-utils.mjs";
 
 dotenv.config();
 
@@ -36,41 +36,19 @@ async function connectDictionaryDb() {
   return mongoose.connection.db;
 }
 
-function parseArrayCell(value) {
-  if (Array.isArray(value)) {
-    return value.map((item) => String(item).trim()).filter(Boolean);
-  }
-
-  const text = String(value || "").trim();
-  if (!text) {
-    return [];
-  }
-
-  try {
-    const parsed = JSON.parse(text);
-    if (Array.isArray(parsed)) {
-      return parsed.map((item) => String(item).trim()).filter(Boolean);
-    }
-  } catch {
-    // Fall back to comma-separated cells for hand-edited workbooks.
-  }
-
-  return text
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
 function readWordDocuments() {
-  const workbook = xlsx.readFile(workbookPath);
-  const sheetName = workbook.SheetNames[0];
-  if (!sheetName) {
-    throw new Error(`No sheets found in ${workbookPath}`);
+  const { rows } = readWorkbookRows(workbookPath);
+
+  if (
+    rows.some(
+      (row) => "senseId" in row || "normalizedWord" in row || "contextType" in row
+    )
+  ) {
+    throw new Error(
+      "This workbook uses the new sense-based format. The current replace-words script still targets the legacy one-word-per-document 'words' collection. Migrate the database schema first or use a legacy workbook."
+    );
   }
 
-  const rows = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], {
-    defval: "",
-  });
   const headerNames = new Set(Object.keys(rows[0] || {}));
   const stringFields = [
     ...requiredStringFields,
