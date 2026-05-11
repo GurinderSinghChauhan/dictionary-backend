@@ -2,6 +2,40 @@ import WordSense from "../models/wordSense";
 
 type ContextType = "subject" | "grade" | "exam";
 
+type ContextWordSense = {
+  word: string;
+  partOfSpeech?: string;
+  pronunciation?: string;
+  wordForms?: string[];
+  meaning: string;
+  shortDefinition?: string;
+  exampleSentence?: string;
+  synonyms?: string[];
+  antonyms?: string[];
+  memoryTrick?: string;
+  origin?: string;
+  senseId: string;
+  image?: {
+    url?: string;
+  };
+};
+
+const toFrontendWord = (item: ContextWordSense) => ({
+  word: item.word,
+  partOfSpeech: item.partOfSpeech || "",
+  pronunciation: item.pronunciation || "",
+  wordForms: item.wordForms || [],
+  meaning: item.meaning,
+  shortDefinition: item.shortDefinition || "",
+  exampleSentence: item.exampleSentence || "",
+  synonyms: item.synonyms || [],
+  antonyms: item.antonyms || [],
+  memoryTrick: item.memoryTrick || "",
+  origin: item.origin || "",
+  imageURL: item.image?.url || "",
+  senseId: item.senseId,
+});
+
 export async function getContextWords(
   contextType: ContextType,
   contextValue: string,
@@ -32,11 +66,7 @@ export async function getContextWords(
   if (senseMatches.length > 0) {
     const paginatedWords = senseMatches
       .slice(startIndex, startIndex + limit)
-      .map((item) => ({
-        word: item.word,
-        meaning: item.meaning,
-        senseId: item.senseId,
-      }));
+      .map((item) => toFrontendWord(item as unknown as ContextWordSense));
 
     return {
       [contextType]: contextValue,

@@ -8,14 +8,42 @@ import { upsertWordSense } from "./wordSensePersistence";
 import { getContextWords } from "./contextWordListing";
 
 const getSubjectContext = (subject: string) => {
-  const normalized = subject.toLowerCase();
-  if (normalized === "english") {
+  const normalized = normalizeSubjectKey(subject);
+  if (normalized === "english literature") {
     return "English literature";
   }
-  if (normalized === "political") {
+  if (normalized === "mathematics") {
+    return "Mathematics";
+  }
+  if (normalized === "political science") {
     return "Political science";
   }
   return subject;
+};
+
+const subjectAliases: Record<string, string> = {
+  english: "english literature",
+  "english language literature": "english literature",
+  "english-language-literature": "english literature",
+  "english language and literature": "english literature",
+  "english-language-and-literature": "english literature",
+  "english & literature": "english literature",
+  literature: "english literature",
+  math: "mathematics",
+  maths: "mathematics",
+  political: "political science",
+  "political-science": "political science",
+  politics: "political science",
+};
+
+const normalizeSubjectKey = (subject: string) => {
+  const normalized = subject
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s*&\s*/g, " and ")
+    .replace(/\s+/g, " ");
+  return subjectAliases[normalized] || normalized;
 };
 
 // Add or update words for a subject
@@ -24,7 +52,7 @@ export const addSubjectWords = async (subject: string, words: unknown[]) => {
     if (!subject || !Array.isArray(words) || words.length === 0) {
       throw new Error("Subject and words array are required.");
     }
-    const normalizedSubject = subject.trim().toLowerCase();
+    const normalizedSubject = normalizeSubjectKey(subject);
 
     for (const item of words as WordDetails[]) {
       await upsertWordSense(item.word, item, "subject", normalizedSubject);
@@ -46,7 +74,7 @@ export const uploadSubjectWords = async (
 ) => {
   try {
     const cleanedWords = normalizeWordList(wordList);
-    const normalizedSubject = subject.trim().toLowerCase();
+    const normalizedSubject = normalizeSubjectKey(subject);
     const existingSenses = await WordSense.find({
       normalizedWord: { $in: cleanedWords },
       contexts: {
@@ -73,7 +101,7 @@ export const uploadSubjectWords = async (
           word,
           getSubjectContext(subject)
         );
-        await upsertWordSense(word, wordDetails, "subject", subject);
+        await upsertWordSense(word, wordDetails, "subject", normalizedSubject);
         addedWords.push(wordDetails.word.toLowerCase());
       }
     }
@@ -174,5 +202,5 @@ export const getSubjectWords = async (
   page: number,
   limit: number
 ) => {
-  return getContextWords("subject", subject, page, limit);
+  return getContextWords("subject", normalizeSubjectKey(subject), page, limit);
 };

@@ -10,6 +10,9 @@ type ContextItem = {
 };
 type SenseLike = {
   meaning: string;
+  image?: {
+    url?: string;
+  };
   contexts?: ContextItem[];
 };
 
@@ -18,7 +21,13 @@ export interface LookupContext {
   contextKey?: string;
 }
 
-const normalizeContextKey = (value?: string) => String(value || "").trim().toLowerCase();
+const normalizeContextKey = (value?: string) =>
+  String(value || "").trim().toLowerCase();
+
+const toFrontendSense = (sense: SenseLike) => ({
+  ...sense,
+  imageURL: sense.image?.url || "",
+});
 
 export async function lookupWord(termRaw: string, context: LookupContext = {}) {
   const term = normalizeWord(termRaw);
@@ -77,7 +86,8 @@ export async function lookupWord(termRaw: string, context: LookupContext = {}) {
       }
     );
 
-    const primarySense = orderedSenses[0];
+    const frontendSenses = orderedSenses.map(toFrontendSense);
+    const primarySense = frontendSenses[0];
 
     return {
       source: "word_senses" as const,
@@ -89,7 +99,7 @@ export async function lookupWord(termRaw: string, context: LookupContext = {}) {
           }
         : null,
       result: primarySense,
-      senses: orderedSenses,
+      senses: frontendSenses,
       totalSenses: orderedSenses.length,
     };
   }

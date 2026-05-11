@@ -10,6 +10,13 @@ npm-debug.log*
 
 # Environment variables
 .env
+.secrets/
+*-*.json
+!*package*.json
+!tsconfig.json
+!vercel.json
+!nodemon.json
+!.prettierrc.json
 
 # Logs
 logs/

@@ -48,6 +48,9 @@ describe("lookupWord", () => {
     expect(result?.source).toBe("word_senses");
     expect(result?.totalSenses).toBe(1);
     expect(result?.result.meaning).toContain("unit of life");
+    expect(result?.result.imageURL).toBe(
+      "https://example.com/biology-cell.png"
+    );
     expect(result?.senses).toHaveLength(1);
     expect(result?.requestedContext).toEqual({
       type: "subject",

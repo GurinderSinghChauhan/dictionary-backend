@@ -2,29 +2,55 @@ import dotenv from "dotenv";
 import mongoose from "mongoose";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import xlsx from "xlsx";
 import { parseArrayCell, readWorkbookRows } from "./workbook-utils.mjs";
 
 dotenv.config();
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const workbookPath =
-  process.argv[2] || path.join(scriptDir, "word-details.xlsx");
-const arrayFields = ["wordForms", "synonyms", "antonyms"];
-const requiredStringFields = [
-  "word",
-  "partOfSpeech",
-  "pronunciation",
-  "meaning",
-  "exampleSentence",
-  "memoryTrick",
-  "origin",
-  "positivePrompt",
-  "negativePrompt",
-];
-const optionalStringFields = [
-  "imageURL",
-  "promptId",
-];
+  process.argv[2] || path.join(scriptDir, "word-senses.xlsx");
+
+function normalizeText(value) {
+  return String(value || "").trim();
+}
+
+function normalizeWord(value) {
+  return normalizeText(value).toLowerCase();
+}
+
+function getGoogleSheetId(value) {
+  const match = String(value).match(/\/spreadsheets\/d\/([^/]+)/);
+  return match?.[1] || value;
+}
+
+function isRemoteSource(value) {
+  return /^https?:\/\//i.test(String(value));
+}
+
+async function readSourceRows(source) {
+  if (!isRemoteSource(source)) {
+    return readWorkbookRows(source);
+  }
+
+  const sheetId = getGoogleSheetId(source);
+  const response = await fetch(
+    `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`
+  );
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch Google Sheet: ${response.status}`);
+  }
+
+  const csv = await response.text();
+  const workbook = xlsx.read(csv, { type: "string" });
+  const sheetName = workbook.SheetNames[0];
+  const rows = xlsx.utils.sheet_to_json(workbook.Sheets[sheetName], {
+    defval: "",
+  });
+
+  return { workbook, sheetName, rows };
+}
 
 async function connectDictionaryDb() {
   const uri = process.env.MONGODB_URI;
@@ -36,192 +62,183 @@ async function connectDictionaryDb() {
   return mongoose.connection.db;
 }
 
-function readWordDocuments() {
-  const { rows } = readWorkbookRows(workbookPath);
-
-  if (
-    rows.some(
-      (row) => "senseId" in row || "normalizedWord" in row || "contextType" in row
-    )
-  ) {
-    throw new Error(
-      "This workbook uses the new sense-based format. The current replace-words script still targets the legacy one-word-per-document 'words' collection. Migrate the database schema first or use a legacy workbook."
-    );
-  }
-
-  const headerNames = new Set(Object.keys(rows[0] || {}));
-  const stringFields = [
-    ...requiredStringFields,
-    ...optionalStringFields.filter((field) => headerNames.has(field)),
-  ];
-  const documentFields = [...stringFields, ...arrayFields];
-  const seenWords = new Set();
-
-  const documents = rows.map((row, index) => {
-    const document = {};
-
-    for (const field of stringFields) {
-      document[field] = String(row[field] || "").trim();
-    }
-
-    document.word = document.word.toLowerCase();
-
-    if (!document.word) {
-      throw new Error(`Missing word in workbook row ${index + 2}`);
-    }
-
-    if (seenWords.has(document.word)) {
-      throw new Error(`Duplicate word in workbook: ${document.word}`);
-    }
-    seenWords.add(document.word);
-
-    for (const field of arrayFields) {
-      document[field] = parseArrayCell(row[field]);
-    }
-
-    return document;
-  });
-
-  return { documents, documentFields };
-}
-
-function valuesAreEqual(left, right) {
-  if (Array.isArray(left) || Array.isArray(right)) {
-    if (!Array.isArray(left) || !Array.isArray(right)) {
-      return false;
-    }
-
-    if (left.length !== right.length) {
-      return false;
-    }
-
-    return left.every((item, index) => item === right[index]);
-  }
-
-  return String(left ?? "") === String(right ?? "");
-}
-
-function getChangedFields(document, existingDocument, documentFields) {
-  const changedFields = {};
-
-  for (const field of documentFields) {
-    if (!valuesAreEqual(document[field], existingDocument?.[field])) {
-      changedFields[field] = document[field];
-    }
-  }
-
-  return changedFields;
-}
-
-async function main() {
-  const { documents, documentFields } = readWordDocuments();
-
-  if (documents.length === 0) {
-    throw new Error(`No word rows found in ${workbookPath}`);
-  }
-
-  const db = await connectDictionaryDb();
-  const collection = db.collection("words");
-  const beforeCount = await collection.countDocuments({});
-  const workbookWords = documents.map((document) => document.word);
-  const existingDocuments = await collection
-    .find(
-      { word: { $in: workbookWords } },
-      {
-        projection: Object.fromEntries(
-          documentFields.map((field) => [field, 1])
-        ),
-      }
-    )
-    .toArray();
-  const existingByWord = new Map(
-    existingDocuments.map((document) => [document.word, document])
+function isSenseWorkbook(rows) {
+  return rows.some(
+    (row) => "senseId" in row || "normalizedWord" in row || "contextType" in row
   );
+}
 
-  let unchanged = 0;
-  let inserts = 0;
-  let updates = 0;
-  const operations = [];
+function buildSearchText(document) {
+  return [
+    document.word,
+    document.partOfSpeech,
+    document.meaning,
+    document.shortDefinition,
+    document.exampleSentence,
+    ...document.wordForms,
+    ...document.synonyms,
+    ...document.antonyms,
+    ...document.tags,
+  ]
+    .map(normalizeText)
+    .filter(Boolean)
+    .join(" ");
+}
 
-  for (const document of documents) {
-    const existingDocument = existingByWord.get(document.word);
+function senseRowToBaseWord(row) {
+  return {
+    word: normalizeWord(row.normalizedWord || row.word),
+    partOfSpeech: normalizeText(row.partOfSpeech),
+    pronunciation: normalizeText(row.pronunciation),
+    wordForms: parseArrayCell(row.wordForms),
+    meaning: normalizeText(row.meaning),
+    exampleSentence: normalizeText(row.exampleSentence),
+    synonyms: parseArrayCell(row.synonyms),
+    antonyms: parseArrayCell(row.antonyms),
+    memoryTrick: normalizeText(row.memoryTrick),
+    origin: normalizeText(row.origin),
+    positivePrompt: normalizeText(row.positivePrompt),
+    negativePrompt: normalizeText(row.negativePrompt),
+    imageURL: normalizeText(row.imageURL),
+    promptId: normalizeText(row.promptId),
+  };
+}
 
-    if (!existingDocument) {
-      inserts += 1;
-      operations.push({
-        insertOne: {
-          document,
-        },
-      });
-      continue;
-    }
-
-    const changedFields = getChangedFields(
-      document,
-      existingDocument,
-      documentFields
-    );
-    if (Object.keys(changedFields).length === 0) {
-      unchanged += 1;
-      continue;
-    }
-
-    updates += 1;
-    operations.push({
-      updateOne: {
-        filter: { word: document.word },
-        update: { $set: changedFields },
+function senseRowToDocument(row, wordId, importedFrom) {
+  const contextType = normalizeText(row.contextType);
+  const contextKey = normalizeText(row.contextKey).toLowerCase();
+  const imageURL = normalizeText(row.imageURL);
+  const tags = contextKey ? [contextKey] : [];
+  const document = {
+    senseId: normalizeText(row.senseId),
+    wordId,
+    word: normalizeWord(row.word),
+    normalizedWord: normalizeWord(row.normalizedWord || row.word),
+    partOfSpeech: normalizeText(row.partOfSpeech),
+    pronunciation: normalizeText(row.pronunciation),
+    wordForms: parseArrayCell(row.wordForms),
+    meaning: normalizeText(row.meaning),
+    shortDefinition: normalizeText(row.shortDefinition),
+    exampleSentence: normalizeText(row.exampleSentence),
+    synonyms: parseArrayCell(row.synonyms),
+    antonyms: parseArrayCell(row.antonyms),
+    memoryTrick: normalizeText(row.memoryTrick),
+    origin: normalizeText(row.origin),
+    contexts: [
+      {
+        type: contextType,
+        key: contextType === "generic" ? "" : contextKey,
+        priority: contextType === "generic" ? 100 : 10,
       },
-    });
-  }
+    ],
+    image: {
+      promptPositive: normalizeText(row.positivePrompt),
+      promptNegative: normalizeText(row.negativePrompt),
+      url: imageURL,
+      provider: imageURL ? "cloudinary" : "",
+      status: imageURL ? "ready" : normalizeText(row.imageStatus) || "not_requested",
+    },
+    tags,
+    searchText: "",
+    source: {
+      type: normalizeText(row.sourceType) || "import",
+      model: normalizeText(row.sourceModel),
+      importedFrom,
+    },
+    reviewStatus: normalizeText(row.reviewStatus) || "draft",
+    status: "active",
+    notes: normalizeText(row.notes),
+  };
 
-  if (operations.length === 0) {
-    const afterCount = await collection.countDocuments({});
-    console.log(
-      JSON.stringify(
-        {
-          database: "dictionary",
-          collection: "words",
-          source: workbookPath,
-          workbookRows: documents.length,
-          updates,
-          inserts,
-          unchanged,
-          beforeCount,
-          count: afterCount,
+  document.searchText = buildSearchText(document);
+  return document;
+}
+
+async function replaceSenseDocuments(rows, source) {
+  const db = await connectDictionaryDb();
+  const wordsCollection = db.collection("words");
+  const sensesCollection = db.collection("word_senses");
+  let wordUpserts = 0;
+  let senseUpserts = 0;
+  const contextCounts = {};
+  const sheetSenseIds = [];
+
+  for (const row of rows) {
+    const word = normalizeWord(row.normalizedWord || row.word);
+    const senseId = normalizeText(row.senseId);
+    const contextType = normalizeText(row.contextType);
+
+    if (!word || !senseId || !contextType) {
+      throw new Error(`Invalid sense row for word "${row.word || ""}"`);
+    }
+
+    contextCounts[contextType] = (contextCounts[contextType] || 0) + 1;
+    sheetSenseIds.push(senseId);
+
+    const wordResult = await wordsCollection.findOneAndUpdate(
+      { word },
+      {
+        $setOnInsert: {
+          ...senseRowToBaseWord(row),
+          word,
         },
-        null,
-        2
-      )
+      },
+      { upsert: true, returnDocument: "after", includeResultMetadata: true }
     );
-    return;
+
+    if (!wordResult.lastErrorObject?.updatedExisting) {
+      wordUpserts += 1;
+    }
+
+    const senseDocument = senseRowToDocument(row, wordResult.value._id, source);
+    const senseResult = await sensesCollection.updateOne(
+      { senseId },
+      { $set: senseDocument },
+      { upsert: true }
+    );
+    senseUpserts += senseResult.modifiedCount + senseResult.upsertedCount;
   }
 
-  const writeResult = await collection.bulkWrite(operations, {
-    ordered: false,
+  const staleDeleteResult = await sensesCollection.deleteMany({
+    senseId: { $nin: sheetSenseIds },
+    "source.importedFrom": {
+      $regex: /^(google-sheet:|https?:\/\/|scripts\/word-generation\/word-senses\.xlsx)/,
+    },
   });
-  const afterCount = await collection.countDocuments({});
 
   console.log(
     JSON.stringify(
       {
         database: "dictionary",
-        collection: "words",
-        source: workbookPath,
-        workbookRows: documents.length,
-        updates,
-        inserts,
-        unchanged,
-        matched: writeResult.matchedCount,
-        modified: writeResult.modifiedCount,
-        inserted: writeResult.insertedCount,
-        beforeCount,
-        count: afterCount,
+        collection: "word_senses",
+        source,
+        workbookRows: rows.length,
+        contextCounts,
+        wordUpserts,
+        senseUpserts,
+        deletedStaleSenses: staleDeleteResult.deletedCount,
+        count: await sensesCollection.countDocuments({ status: "active" }),
       },
       null,
       2
     )
   );
+}
+
+async function main() {
+  const sourceRows = await readSourceRows(workbookPath);
+
+  if (sourceRows.rows.length === 0) {
+    throw new Error(`No rows found in ${workbookPath}`);
+  }
+
+  if (!isSenseWorkbook(sourceRows.rows)) {
+    throw new Error(
+      "replace-words only supports the current word_senses format. Use a sheet with senseId, normalizedWord, and contextType columns."
+    );
+  }
+
+  await replaceSenseDocuments(sourceRows.rows, workbookPath);
 }
 
 main()
